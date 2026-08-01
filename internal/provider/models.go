@@ -2,38 +2,51 @@ package provider
 
 import (
 	"encoding/json"
-	"strings"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
-// FetchModels tries to get the current model list from a provider's /v1/models
-// endpoint. It first tries Bearer auth, then falls back to X-Api-Key (MiniMax
-// style). Returns nil, error if both fail or no models found — callers should
-// fall back to manual model entry.
+// FetchModels tries to get the current model list from a provider.
+// Strategy: try baseURL/v1/models first, then strip the path prefix and try
+// again at the root (e.g., api.deepseek.com/v1/models when the anthropic
+// endpoint is api.deepseek.com/anthropic/v1/messages).
 func FetchModels(baseURL, apiKey string) ([]ModelInfo, error) {
-	url := strings.TrimRight(baseURL, "/") + "/v1/models"
+	urls := modelListURLs(baseURL)
 
-	// Try Bearer auth first (Anthropic, OpenRouter, DeepSeek, MaaS).
-	models, err := fetchWithAuth(url, "Bearer "+apiKey)
-	if err == nil {
-		return models, nil
+	for _, candidate := range urls {
+		models, err := fetch(candidate, apiKey)
+		if err == nil {
+			return models, nil
+		}
 	}
-
-	// Fall back to X-Api-Key (MiniMax style).
-	return fetchWithAuth(url, apiKey)
+	return nil, fmt.Errorf("could not fetch models from any endpoint")
 }
 
-func fetchWithAuth(url, authValue string) ([]ModelInfo, error) {
+// modelListURLs returns candidate /v1/models URLs to try.
+func modelListURLs(baseURL string) []string {
+	cleaned := strings.TrimRight(baseURL, "/")
+	candidates := []string{cleaned + "/v1/models"}
+
+	// If baseURL has a path prefix (e.g. /anthropic), also try the root.
+	if u, err := url.Parse(cleaned); err == nil && u.Path != "" && u.Path != "/" {
+		u.Path = "/v1/models"
+		candidates = append(candidates, u.String())
+	}
+	return candidates
+}
+
+func fetch(url, apiKey string) ([]ModelInfo, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	if authValue != "" {
-		req.Header.Set("Authorization", authValue)
-		req.Header.Set("X-Api-Key", authValue)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("X-Api-Key", apiKey)
 	}
 
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -44,11 +57,10 @@ func fetchWithAuth(url, authValue string) ([]ModelInfo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("HTTP %d: could not fetch models for this provider", resp.StatusCode)
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	// Limit read to prevent unbounded memory from provider-controlled response.
-	limited := io.LimitReader(resp.Body, 1<<20) // 1MB max
+	limited := io.LimitReader(resp.Body, 1<<20)
 	var result struct {
 		Data []ModelInfo `json:"data"`
 	}
@@ -57,7 +69,7 @@ func fetchWithAuth(url, authValue string) ([]ModelInfo, error) {
 	}
 
 	if len(result.Data) == 0 {
-		return nil, fmt.Errorf("provider returned no models — the API key may not grant model access")
+		return nil, fmt.Errorf("provider returned no models")
 	}
 
 	return result.Data, nil
