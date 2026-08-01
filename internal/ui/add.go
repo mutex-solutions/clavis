@@ -62,7 +62,8 @@ func AddProfile() (*AddResult, error) {
 			apiKey = key
 			step = 1
 		case 1:
-			m, err := wizardModels(baseURL, apiKey)
+			prov, _ := provider.Get(providerID)
+			m, err := wizardModels(baseURL, prov.ModelsEndpoint(), apiKey)
 			if err != nil {
 				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 0; continue }
 				return nil, err
@@ -161,12 +162,9 @@ func wizardProvider() (providerID, baseURL, apiKey string, err error) {
 	return providerID, baseURL, apiKey, nil
 }
 
-func wizardModels(baseURL, apiKey string) ([]provider.ModelInfo, error) {
-	prov, _ := provider.Get("") // ignore error — we just need display name fallback
-	_ = prov
-
+func wizardModels(baseURL, modelsURL, apiKey string) ([]provider.ModelInfo, error) {
 	fmt.Println(DimStyle.Render("  Fetching models..."))
-	models, err := provider.FetchModels(baseURL, "", apiKey)
+	models, err := provider.FetchModels(baseURL, modelsURL, apiKey)
 	if err != nil {
 		fmt.Println(Warn(fmt.Sprintf("Could not fetch models: %v", err)))
 		fmt.Println(DimStyle.Render("  Falling back to manual model entry."))
@@ -345,12 +343,43 @@ func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, suba
 }
 
 func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
-	huh.NewForm(huh.NewGroup(
+	var simple bool
+	if huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title("Simple model setup?").
+			Description("One model for all tiers.").
+			Affirmative("Yes, one model").Negative("No, per-tier").Value(&simple),
+	)).Run() != nil {
+		return "", "", "", "", errBack
+	}
+
+	if simple {
+		if huh.NewForm(huh.NewGroup(
+			huh.NewInput().Title("Model ID").Placeholder("model-id").
+				Validate(func(s string) error {
+					if s == "" {
+						return fmt.Errorf("required")
+					}
+					return nil
+				}).Value(&opus),
+		)).Run() != nil {
+			return "", "", "", "", errBack
+		}
+		return opus, opus, opus, opus, nil
+	}
+
+	if huh.NewForm(huh.NewGroup(
 		huh.NewInput().Title("Opus model ID — PRIMARY").Placeholder("model-id").
-			Validate(func(s string) error { if s == "" { return fmt.Errorf("required") }; return nil }).Value(&opus),
+			Validate(func(s string) error {
+				if s == "" {
+					return fmt.Errorf("required")
+				}
+				return nil
+			}).Value(&opus),
 		huh.NewInput().Title("Sonnet model ID — optional").Placeholder("same as opus").Value(&sonnet),
 		huh.NewInput().Title("Haiku model ID — optional").Placeholder("same as opus").Value(&haiku),
 		huh.NewInput().Title("Subagent model ID — optional").Placeholder("same as opus").Value(&subagent),
-	)).Run()
+	)).Run() != nil {
+		return "", "", "", "", errBack
+	}
 	return opus, sonnet, haiku, subagent, nil
 }
