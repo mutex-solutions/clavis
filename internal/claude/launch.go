@@ -126,6 +126,9 @@ func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
 	if len(p.CustomHeaders) > 0 {
 		var parts []string
 		for k, v := range p.CustomHeaders {
+			// Sanitize: strip newlines/carriage returns to prevent header injection.
+			k = strings.NewReplacer("\n", "", "\r", "").Replace(k)
+			v = strings.NewReplacer("\n", "", "\r", "").Replace(v)
 			parts = append(parts, fmt.Sprintf("%s: %s", k, v))
 		}
 		set["ANTHROPIC_CUSTOM_HEADERS"] = strings.Join(parts, "\n")

@@ -167,10 +167,15 @@ func LoadKey(name string) (string, error) {
 }
 
 // Save writes a profile and its API key to disk.
+// Uses atomic write (temp file + rename) to prevent corruption on disk full.
 func Save(p *Profile, apiKey string) error {
 	if err := ValidName(p.Name); err != nil {
 		return err
 	}
+
+	// Normalize base URL: strip trailing slashes.
+	p.BaseURL = strings.TrimRight(p.BaseURL, "/")
+
 	dir := ProfileDir(p.Name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("cannot create profile dir: %w", err)
@@ -182,30 +187,45 @@ func Save(p *Profile, apiKey string) error {
 	}
 	p.UpdatedAt = now
 
-	// Write profile.json (no key)
+	// Write .env first (the critical secret), atomically.
+	if apiKey != "" {
+		envPath := filepath.Join(dir, ".env")
+		envContent := fmt.Sprintf("CLAVIS_KEY=%s\n", apiKey)
+		if err := atomicWrite(envPath, []byte(envContent), 0o600); err != nil {
+			return err
+		}
+	}
+
+	// Write profile.json atomically (no key).
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "profile.json"), append(data, '\n'), 0o644); err != nil {
+	return atomicWrite(filepath.Join(dir, "profile.json"), append(data, '\n'), 0o644)
+}
+
+// atomicWrite writes data to a temp file then renames it into place.
+func atomicWrite(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".clavis-tmp-*")
+	if err != nil {
 		return err
 	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // clean up on failure
 
-	// Write .env (key only, 0600)
-	if apiKey != "" {
-		envPath := filepath.Join(dir, ".env")
-		envContent := fmt.Sprintf("CLAVIS_KEY=%s\n", apiKey)
-		if err := os.WriteFile(envPath, []byte(envContent), 0o600); err != nil {
-			return err
-		}
-		// Enforce permissions even if file already existed (WriteFile only
-		// applies mode on creation).
-		if err := os.Chmod(envPath, 0o600); err != nil {
-			return err
-		}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
 	}
-
-	return nil
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // Delete removes a profile from disk.
