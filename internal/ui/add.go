@@ -39,7 +39,7 @@ func AddProfile() (*AddResult, error) {
 		case 0:
 			p, url, key, err := wizardProvider()
 			if err != nil {
-				if errors.Is(err, errBack) { continue } // first step, no back
+				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { continue } // first step, no back
 				return nil, err
 			}
 			providerID = p
@@ -49,7 +49,7 @@ func AddProfile() (*AddResult, error) {
 		case 1:
 			m, err := wizardModels(baseURL, apiKey)
 			if err != nil {
-				if errors.Is(err, errBack) { step = 0; continue }
+				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 0; continue }
 				return nil, err
 			}
 			models = m
@@ -57,7 +57,7 @@ func AddProfile() (*AddResult, error) {
 		case 2:
 			a, err := wizardAlias(providerID)
 			if err != nil {
-				if errors.Is(err, errBack) { step = 1; continue }
+				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 1; continue }
 				return nil, err
 			}
 			alias = a
@@ -65,7 +65,7 @@ func AddProfile() (*AddResult, error) {
 		case 3:
 			o, s, h, sub, err := wizardModelSelect(models)
 			if err != nil {
-				if errors.Is(err, errBack) { step = 2; continue }
+				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 2; continue }
 				return nil, err
 			}
 			opusModel, sonnetModel, haikuModel, subagentModel = o, s, h, sub
@@ -73,7 +73,7 @@ func AddProfile() (*AddResult, error) {
 		case 4:
 			e, nt, cp, err := wizardAdvanced()
 			if err != nil {
-				if errors.Is(err, errBack) { step = 3; continue }
+				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 3; continue }
 				return nil, err
 			}
 			effort = e
