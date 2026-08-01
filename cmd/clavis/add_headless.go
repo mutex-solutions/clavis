@@ -12,8 +12,6 @@ import (
 )
 
 func runAddOrHeadless(args []string) {
-	// Use flag.FlagSet to properly detect headless mode.
-	// If user passes -h, show help for headless flags.
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	providerID := fs.String("provider", "", "Provider ID (deepseek, anthropic, zai, etc.)")
 	model := fs.String("model", "", "Primary model (daily driver) — required")
@@ -33,16 +31,7 @@ func runAddOrHeadless(args []string) {
 	minimal := fs.Bool("bare", false, "Minimal mode (--bare)")
 	customHeaders := fs.String("headers", "", "Custom headers (key: val\\nkey2: val2)")
 
-	// Also support positional args for old --sonnet/--opus/--haiku compat
-	sonnetCompat := fs.String("sonnet", "", "")
-	opusCompat := fs.String("opus", "", "")
-	haikuCompat := fs.String("haiku", "", "")
-	subagentCompat := fs.String("subagent", "", "")
-	urlCompat := fs.String("url", "", "")
-
 	err := fs.Parse(args)
-
-	// If parsing failed and no flags were given, run interactive wizard.
 	if err != nil && !hasAnyFlag(args) {
 		runAdd()
 		return
@@ -51,35 +40,20 @@ func runAddOrHeadless(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	// No flags given at all → interactive wizard.
 	if !hasAnyFlag(args) {
 		runAdd()
 		return
 	}
 
-	// Resolve model: new flag names take precedence, old ones as fallback.
-	resolve := func(primary, compat string) string {
-		if primary != "" {
-			return primary
-		}
-		return compat
-	}
-	sonnet := resolve(*model, *sonnetCompat)
-	opus := resolve(*reasoningModel, *opusCompat)
-	haiku := resolve(*fastModel, *haikuCompat)
-	subagent := resolve(*subagentModel, *subagentCompat)
-	url := resolve(*baseURL, *urlCompat)
-
 	if *providerID == "" {
 		fmt.Fprintln(os.Stderr, ui.Error("--provider is required"))
 		os.Exit(1)
 	}
-	if sonnet == "" {
+	if *model == "" {
 		fmt.Fprintln(os.Stderr, ui.Error("--model is required"))
 		os.Exit(1)
 	}
 
-	// Resolve API key
 	apiKey := *key
 	if *keyFile != "" {
 		data, err := os.ReadFile(*keyFile)
@@ -100,6 +74,7 @@ func runAddOrHeadless(args []string) {
 		os.Exit(1)
 	}
 
+	url := *baseURL
 	if url == "" {
 		url = prov.BaseURL
 	}
@@ -113,56 +88,42 @@ func runAddOrHeadless(args []string) {
 		name = profile.NextAlias(*providerID)
 	}
 
-	// Provider-aware defaults: mirror the interactive wizard
+	if profile.Exists(name) {
+		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Profile %q already exists", name)))
+		os.Exit(3)
+	}
+
 	noTraffic := prov.ID != "anthropic"
 	noBetas := prov.ID != "anthropic"
 	noAttr := prov.ID != "anthropic"
 
-	// Check for name collision before saving.
-	if profile.Exists(name) {
-		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Profile %q already exists", name)))
-		os.Exit(1)
-	}
-
 	fmt.Print(ui.DimStyle.Render("  Validating... "))
-	if err := provider.Ping(url, apiKey, sonnet); err != nil {
+	if err := provider.Ping(url, apiKey, *model); err != nil {
 		fmt.Println(ui.Error(fmt.Sprintf("Validation failed: %v", err)))
 		os.Exit(1)
 	}
 	fmt.Println(ui.Success("Key valid"))
 
 	p := &profile.Profile{
-		Name:                       name,
-		ProviderID:                 *providerID,
-		BaseURL:                    url,
-		SonnetModel:                sonnet,
-		OpusModel:                  opus,
-		HaikuModel:                 haiku,
-		SubagentModel:              subagent,
+		Name:        name,
+		ProviderID:  *providerID,
+		BaseURL:     url,
+		SonnetModel: *model,
+		OpusModel:   *reasoningModel,
+		HaikuModel:  *fastModel,
+		SubagentModel: *subagentModel,
 		DisableNonessentialTraffic: &noTraffic,
 		DisableExperimentalBetas:   &noBetas,
 		DisableAttribution:         &noAttr,
 		MinimalMode:                *minimal,
 	}
 
-	if *contextWindow > 0 {
-		p.ContextWindow = contextWindow
-	}
-	if *compactPct > 0 {
-		p.AutoCompactPct = compactPct
-	}
-	if *maxTokens > 0 {
-		p.MaxOutputTokens = maxTokens
-	}
-	if *effort != "" {
-		p.EffortLevel = *effort
-	}
-	if *timeoutMs > 0 {
-		p.TimeoutMs = timeoutMs
-	}
-	if *noThinking {
-		p.DisableThinking = true
-	}
+	if *contextWindow > 0 { p.ContextWindow = contextWindow }
+	if *compactPct > 0 { p.AutoCompactPct = compactPct }
+	if *maxTokens > 0 { p.MaxOutputTokens = maxTokens }
+	if *effort != "" { p.EffortLevel = *effort }
+	if *timeoutMs > 0 { p.TimeoutMs = timeoutMs }
+	if *noThinking { p.DisableThinking = true }
 	if *customHeaders != "" {
 		p.CustomHeaders = make(map[string]string)
 		for _, line := range strings.Split(*customHeaders, "\n") {

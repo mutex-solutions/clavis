@@ -12,7 +12,7 @@ import (
 	"github.com/dinhlongviolin1/clavis/internal/ui"
 )
 
-var version = "dev" // set by ldflags -X at build time
+var Version = "dev" // set by ldflags -X at build time
 
 func main() {
 	args := os.Args[1:]
@@ -26,7 +26,7 @@ func main() {
 	case "--help", "-h", "help":
 		printUsage()
 	case "--version", "-v", "version":
-		fmt.Printf("clavis %s\n", version)
+		fmt.Printf("clavis %s\n", Version)
 	case "add":
 		runAddOrHeadless(args[1:])
 	case "list", "ls":
@@ -41,7 +41,7 @@ func main() {
 			runCompletion(args[1:])
 		}
 	case "providers":
-		runProviders()
+		runProvidersCmd(args[1:])
 	case "validate":
 		runValidate(args[1:])
 	case "start":

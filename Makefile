@@ -2,7 +2,7 @@
 
 BINARY  := clavis
 VERSION := 0.1.0
-LDFLAGS := -ldflags "-s -w"
+LDFLAGS := -ldflags "-s -w -X github.com/dinhlongviolin1/clavis/cmd/clavis/Version=$(VERSION)"
 
 build:
 	go build $(LDFLAGS) -o bin/$(BINARY) ./cmd/clavis/

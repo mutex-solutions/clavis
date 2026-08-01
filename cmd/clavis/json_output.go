@@ -30,17 +30,10 @@ func runProvidersJSON() {
 }
 
 func runProvidersCmd(args []string) {
-	if len(args) > 1 && args[1] == "--json" {
+	if len(args) > 0 && args[0] == "--json" {
 		runProvidersJSON()
 		return
 	}
 	runProviders()
 }
 
-func runListCmd(args []string) {
-	if len(args) > 1 && args[1] == "--json" {
-		runListJSON()
-		return
-	}
-	runList()
-}
