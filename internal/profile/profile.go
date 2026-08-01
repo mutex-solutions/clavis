@@ -133,7 +133,8 @@ var reserved = map[string]bool{
 	"add": true, "list": true, "ls": true, "remove": true, "rm": true,
 	"start": true, "providers": true, "validate": true, "version": true,
 	"help": true, "switch": true, "edit": true, "info": true, "env": true,
-	"test": true, "completion": true,
+	"test": true, "completion": true, "update": true, "upgrade": true,
+	"self-update": true,
 }
 
 // ValidName checks if a profile name is safe for use as a directory name.

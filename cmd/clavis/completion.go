@@ -29,11 +29,11 @@ const bashCompletion = `_clavis() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="add list ls remove rm providers validate version start help completion"
+    local commands="add list ls remove rm providers validate test update version start help completion"
     local profiles=$(ls -1 "$HOME/.clavis/profiles/" 2>/dev/null)
 
     case $prev in
-        remove|rm|validate)
+        remove|rm|validate|test|start)
             COMPREPLY=($(compgen -W "$profiles" -- "$cur"))
             return
             ;;
@@ -58,7 +58,7 @@ const zshCompletion = `#compdef clavis
 
 _clavis() {
     local -a commands profiles
-    commands=(add list ls remove rm providers validate version start help completion)
+    commands=(add list ls remove rm providers validate test update version start help completion)
     profiles=(${(f)"$(ls -1 $HOME/.clavis/profiles/ 2>/dev/null)"})
 
     local context state line
@@ -97,15 +97,15 @@ end
 complete -c clavis -f
 
 # Subcommands
-complete -c clavis -n "not __fish_seen_subcommand_from add list ls remove rm providers validate version start help completion" \
-    -a "add list ls remove rm providers validate version start help completion"
+complete -c clavis -n "not __fish_seen_subcommand_from add list ls remove rm providers validate test update version start help completion" \
+    -a "add list ls remove rm providers validate test update version start help completion"
 
 # Profile names for launch
-complete -c clavis -n "not __fish_seen_subcommand_from add list ls remove rm providers validate version start help completion" \
+complete -c clavis -n "not __fish_seen_subcommand_from add list ls remove rm providers validate test update version start help completion" \
     -a "(__fish_clavis_profiles)" -d "Profile"
 
-# Profile names for remove/validate
-complete -c clavis -n "__fish_seen_subcommand_from remove rm validate" \
+# Profile names for remove/validate/test
+complete -c clavis -n "__fish_seen_subcommand_from remove rm validate test start" \
     -a "(__fish_clavis_profiles)" -d "Profile"
 `
 

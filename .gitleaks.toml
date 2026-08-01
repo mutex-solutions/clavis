@@ -1,0 +1,18 @@
+# gitleaks configuration for clavis.
+# Extends the default ruleset; adds allowlists for obvious placeholders so
+# documentation examples don't trip the scanner.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and example values, not real secrets"
+regexes = [
+  '''sk-\.\.\.''',            # docs placeholder
+  '''sk-fake[a-z0-9-]*''',    # test placeholder
+  '''sk-xxx+''',              # generic placeholder
+  '''sk-your-key-here''',
+]
+paths = [
+  '''.*_test\.go$''',         # tests use throwaway values
+]

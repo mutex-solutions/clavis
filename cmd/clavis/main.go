@@ -49,6 +49,8 @@ func main() {
 		runValidate(args[1:])
 	case "test":
 		runTest(args[1:])
+	case "update", "upgrade", "self-update":
+		runUpdate(args[1:])
 	case "start":
 		runSelector(args[1:])
 	default:
@@ -81,6 +83,7 @@ Usage:
   clavis providers            Show provider catalog
   clavis validate <name>      Ping a profile's provider
   clavis test <name>          Check a profile is set up and runnable
+  clavis update               Update clavis to the latest release
   clavis version              Print version
   clavis completion <shell>   Generate shell completion script
 

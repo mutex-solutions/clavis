@@ -428,17 +428,25 @@ terminal released → claude launched), so there is no TUI-in-TUI conflict.
 | `=<same key>` | Sends duplicate auth headers (X-Api-Key + Bearer). Some gateways reject. |
 | **unset** ✅ | Only `Authorization: Bearer` is sent. Clean. No subscription prompt. |
 
-### Why CLAUDE_CONFIG_DIR per profile
+### CLAUDE_CONFIG_DIR: shared by default, isolation opt-in
 
-Each provider gets isolated session history, resume state, and config.
-Without this, `claude --resume` from a DeepSeek profile could pick up
-sessions from an Anthropic profile.
+**Current behavior (v0.1+):** profiles **share the user's `~/.claude`** by
+default. `CLAUDE_CONFIG_DIR` is left inherited, so the user's MCP servers,
+subagents, memory (`~/.claude/CLAUDE.md`), and settings are all present —
+clavis only routes the provider/model via env vars.
 
-**Known tradeoff:** Setting CLAUDE_CONFIG_DIR overrides ALL user-level
-config discovery. The user's `~/.claude/CLAUDE.md` (global instructions)
-is NOT visible from clavis-launched sessions. Project-level CLAUDE.md
-(cwd-relative) still works normally. This is an inherent isolation
-tradeoff — clavis does not manage or copy CLAUDE.md files.
+Isolation is **opt-in**, per profile (`IsolatedConfig`, set in the wizard's
+advanced step or `clavis add --isolated`) or per launch (`clavis <name>
+--isolated` / `--shared`). When isolated, the profile gets its own
+`CLAUDE_CONFIG_DIR` at `~/.clavis/profiles/<name>` with independent session
+history and config.
+
+> Earlier drafts forced isolation for every profile. That was reversed because
+> it hid the user's entire Claude Code setup (MCP, agents, memory) behind a
+> blank config, which is rarely what people want. Attribution control moved
+> from writing a `settings.json` into the config dir to the
+> `CLAUDE_CODE_ATTRIBUTION_HEADER` env var, so shared mode never mutates
+> `~/.claude`.
 
 ---
 

@@ -55,16 +55,15 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 		return 1, fmt.Errorf("failed to start claude: %w", err)
 	}
 
-	// Forward signals in background. Since claude is in its own process group
-	// (Setpgid), we forward to the process group (negative PID) so that any
-	// grandchildren claude spawns also receive the signal.
+	// Forward signals in background to the child (and its process group where
+	// the platform supports it, so grandchildren also receive the signal).
 	done := make(chan struct{})
 	go func() {
 		for {
 			select {
 			case sig := <-sigCh:
 				if cmd.Process != nil {
-					_ = syscall.Kill(-cmd.Process.Pid, sig.(syscall.Signal))
+					forwardSignal(cmd.Process, sig)
 				}
 			case <-done:
 				return
@@ -81,12 +80,8 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			// Unwrap to get the platform-specific exit status.
-			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-				if status.Signaled() {
-					// Signal death: return 128 + signal number (standard convention).
-					return 128 + int(status.Signal()), nil
-				}
-				return status.ExitStatus(), nil
+			if code, ok := exitCode(exitErr.Sys()); ok {
+				return code, nil
 			}
 			return exitErr.ExitCode(), nil
 		}
