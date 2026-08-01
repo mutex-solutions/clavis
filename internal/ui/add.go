@@ -249,8 +249,13 @@ func wizardKey(providerID, baseURL string) (outURL, apiKey string, err error) {
 }
 
 func wizardModels(baseURL, modelsURL, apiKey string) ([]provider.ModelInfo, error) {
-	fmt.Println(DimStyle.Render("  Fetching models..."))
-	models, err := provider.FetchModels(baseURL, modelsURL, apiKey)
+	res, err := runWithSpinner("Fetching models…", func() (any, error) {
+		return provider.FetchModels(baseURL, modelsURL, apiKey)
+	})
+	var models []provider.ModelInfo
+	if res != nil {
+		models, _ = res.([]provider.ModelInfo)
+	}
 	if err != nil {
 		// The next wizard step clears the screen, so pause on a confirm to let
 		// the user read why the live list is unavailable before manual entry.

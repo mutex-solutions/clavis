@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/dinhlongviolin1/clavis/internal/claude"
@@ -162,14 +161,14 @@ func runAdd() {
 		return
 	}
 
-	// Validate key with a ping
-	fmt.Print(ui.DimStyle.Render("  Validating key..."))
-	if err := provider.Ping(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel); err != nil {
-		fmt.Print("\r" + strings.Repeat(" ", 60) + "\r")
-		fmt.Println(ui.Warn(fmt.Sprintf("Key validation failed: %v", err)))
+	// Validate key with a ping (animated so the screen isn't blank while it blocks).
+	pingErr := ui.Spinner("Validating key…", func() error {
+		return provider.Ping(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel)
+	})
+	if pingErr != nil {
+		fmt.Println(ui.Warn(fmt.Sprintf("Key validation failed: %v", pingErr)))
 		fmt.Println(ui.NextStep("Edit the key, then retry:", "clavis validate "+result.Profile.Name))
 	} else {
-		fmt.Print("\r" + strings.Repeat(" ", 60) + "\r")
 		fmt.Println(ui.Success("Key valid"))
 	}
 
