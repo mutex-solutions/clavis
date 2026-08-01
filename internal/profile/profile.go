@@ -94,6 +94,23 @@ func (p *Profile) ShouldDisableAttribution() bool {
 	return false
 }
 
+// Validate checks profile invariants that prevent silent launch failures.
+func (p *Profile) Validate() error {
+	if err := ValidName(p.Name); err != nil {
+		return fmt.Errorf("name: %w", err)
+	}
+	if p.ProviderID == "" {
+		return fmt.Errorf("provider_id is required")
+	}
+	if p.SonnetModel == "" {
+		return fmt.Errorf("sonnet_model is required")
+	}
+	if p.BaseURL == "" {
+		return fmt.Errorf("base_url is required")
+	}
+	return nil
+}
+
 // ValidName checks if a profile name is safe (no path traversal).
 func ValidName(name string) error {
 	if name == "" {

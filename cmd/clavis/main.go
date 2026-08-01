@@ -12,7 +12,7 @@ import (
 	"github.com/dinhlongviolin1/clavis/internal/ui"
 )
 
-const version = "0.1.0"
+var version = "dev" // set by ldflags -X at build time
 
 func main() {
 	args := os.Args[1:]
@@ -148,7 +148,7 @@ func runAdd() {
 
 	// Validate key with a ping
 	fmt.Print(ui.DimStyle.Render("  Validating key..."))
-	if err := validateKey(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel); err != nil {
+	if err := provider.Ping(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel); err != nil {
 		fmt.Print("\r" + strings.Repeat(" ", 60) + "\r")
 		fmt.Println(ui.Error(fmt.Sprintf("key validation failed: %v", err)))
 		fmt.Println(ui.DimStyle.Render("  Saving profile anyway. Edit ~/.clavis/profiles/<name>/.env to fix the key."))
@@ -254,34 +254,6 @@ func runProviders() {
 		}
 	}
 	fmt.Println()
-}
-
-// runValidate pings a profile's provider.
-func runValidate(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: clavis validate <name>")
-		os.Exit(1)
-	}
-
-	name := args[0]
-	p, err := profile.Load(name)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, ui.Error(err.Error()))
-		os.Exit(1)
-	}
-
-	apiKey, err := profile.LoadKey(name)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, ui.Error(err.Error()))
-		os.Exit(1)
-	}
-
-	fmt.Printf("  Pinging %s (%s)... ", p.ProviderID, p.BaseURL)
-	if err := validateKey(p.BaseURL, apiKey, p.SonnetModel); err != nil {
-		fmt.Println(ui.Error(err.Error()))
-		os.Exit(1)
-	}
-	fmt.Println(ui.Success("OK"))
 }
 
 // formatRelativeTime returns a human-readable relative time string.

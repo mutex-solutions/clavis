@@ -1,6 +1,6 @@
 module github.com/dinhlongviolin1/clavis
 
-go 1.26.2
+go 1.23.0
 
 require (
 	github.com/charmbracelet/huh v1.0.0

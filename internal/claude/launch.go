@@ -17,6 +17,10 @@ import (
 // It blocks until claude exits, then saves last-used state.
 // Returns claude's exit code.
 func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) {
+	if err := p.Validate(); err != nil {
+		return 1, fmt.Errorf("invalid profile: %w", err)
+	}
+
 	env, err := buildEnv(p, apiKey)
 	if err != nil {
 		return 1, fmt.Errorf("build env: %w", err)

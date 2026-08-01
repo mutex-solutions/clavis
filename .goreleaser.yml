@@ -14,7 +14,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w
+      - -s -w -X github.com/dinhlongviolin1/clavis/cmd/clavis.version={{.Version}}
 
 archives:
   - format: tar.gz
