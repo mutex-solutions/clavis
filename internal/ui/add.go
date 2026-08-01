@@ -106,7 +106,7 @@ func AddProfile() (*AddResult, error) {
 	}
 
 	// Step 3: Model tier selection
-	sonnetModel, opusModel, haikuModel, subagentModel, err := selectTiers(prov)
+	sonnetModel, opusModel, haikuModel, subagentModel, err := selectTiers(&prov)
 	if err != nil {
 		return nil, err
 	}

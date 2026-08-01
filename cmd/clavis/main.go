@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dinhlongviolin1/clavis/internal/claude"
 	"github.com/dinhlongviolin1/clavis/internal/profile"
@@ -180,13 +181,20 @@ func runList() {
 	lastUsed := profile.LoadLastUsed()
 
 	fmt.Println()
-	fmt.Printf("  %-14s %-16s %-22s %-10s\n", "NAME", "PROVIDER", "SONNET MODEL", "LAST USED")
+	fmt.Printf("  %-14s %-16s %-22s %-10s\n", "NAME", "PROVIDER", "SONNET MODEL", "UPDATED")
 	for _, p := range profiles {
 		marker := " "
 		if p.Name == lastUsed {
 			marker = "*"
 		}
-		fmt.Printf(" %s%-13s %-16s %-22s\n", marker, p.Name, p.ProviderID, p.SonnetModel)
+		updated := ""
+		if p.UpdatedAt != "" {
+			t, err := time.Parse(time.RFC3339, p.UpdatedAt)
+			if err == nil {
+				updated = formatRelativeTime(time.Since(t))
+			}
+		}
+		fmt.Printf(" %s%-13s %-16s %-22s %-10s\n", marker, p.Name, p.ProviderID, p.SonnetModel, updated)
 	}
 	fmt.Println()
 	fmt.Printf("  %d profiles in %s\n", len(profiles), profile.Dir())
@@ -274,4 +282,32 @@ func runValidate(args []string) {
 		os.Exit(1)
 	}
 	fmt.Println(ui.Success("OK"))
+}
+
+// formatRelativeTime returns a human-readable relative time string.
+func formatRelativeTime(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		m := int(d.Minutes())
+		if m == 1 {
+			return "1m ago"
+		}
+		return fmt.Sprintf("%dm ago", m)
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		if h == 1 {
+			return "1h ago"
+		}
+		return fmt.Sprintf("%dh ago", h)
+	case d < 7*24*time.Hour:
+		ds := int(d.Hours() / 24)
+		if ds == 1 {
+			return "1d ago"
+		}
+		return fmt.Sprintf("%dd ago", ds)
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }

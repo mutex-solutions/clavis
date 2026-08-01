@@ -48,19 +48,21 @@ func init() {
 	}
 }
 
-// All returns the full built-in provider catalog.
+// All returns a copy of the built-in provider catalog.
 func All() []Provider {
-	return catalog
+	result := make([]Provider, len(catalog))
+	copy(result, catalog)
+	return result
 }
 
-// Get returns a provider by ID.
-func Get(id string) (*Provider, error) {
+// Get returns a copy of a provider by ID.
+func Get(id string) (Provider, error) {
 	for i := range catalog {
 		if catalog[i].ID == id {
-			return &catalog[i], nil
+			return catalog[i], nil
 		}
 	}
-	return nil, fmt.Errorf("provider %q not found", id)
+	return Provider{}, fmt.Errorf("provider %q not found", id)
 }
 
 // ModelsForTier returns models whose tierHints include the given tier.
