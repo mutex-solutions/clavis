@@ -36,4 +36,3 @@ func runProvidersCmd(args []string) {
 	}
 	runProviders()
 }
-

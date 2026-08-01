@@ -42,4 +42,3 @@ func TestAllProvidersHaveAuth(t *testing.T) {
 		}
 	}
 }
-

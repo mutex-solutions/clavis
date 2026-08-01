@@ -50,5 +50,5 @@ func Info(msg string) string {
 
 // NextStep tells the user what command to run next.
 func NextStep(prefix, cmd string) string {
-	return DimStyle.Render("  " + prefix + " ") + CommandStyle.Render(cmd)
+	return DimStyle.Render("  "+prefix+" ") + CommandStyle.Render(cmd)
 }

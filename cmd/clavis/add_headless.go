@@ -105,25 +105,37 @@ func runAddOrHeadless(args []string) {
 	fmt.Println(ui.Success("Key valid"))
 
 	p := &profile.Profile{
-		Name:        name,
-		ProviderID:  *providerID,
-		BaseURL:     url,
-		SonnetModel: *model,
-		OpusModel:   *reasoningModel,
-		HaikuModel:  *fastModel,
-		SubagentModel: *subagentModel,
+		Name:                       name,
+		ProviderID:                 *providerID,
+		BaseURL:                    url,
+		SonnetModel:                *model,
+		OpusModel:                  *reasoningModel,
+		HaikuModel:                 *fastModel,
+		SubagentModel:              *subagentModel,
 		DisableNonessentialTraffic: &noTraffic,
 		DisableExperimentalBetas:   &noBetas,
 		DisableAttribution:         &noAttr,
 		MinimalMode:                *minimal,
 	}
 
-	if *contextWindow > 0 { p.ContextWindow = contextWindow }
-	if *compactPct > 0 { p.AutoCompactPct = compactPct }
-	if *maxTokens > 0 { p.MaxOutputTokens = maxTokens }
-	if *effort != "" { p.EffortLevel = *effort }
-	if *timeoutMs > 0 { p.TimeoutMs = timeoutMs }
-	if *noThinking { p.DisableThinking = true }
+	if *contextWindow > 0 {
+		p.ContextWindow = contextWindow
+	}
+	if *compactPct > 0 {
+		p.AutoCompactPct = compactPct
+	}
+	if *maxTokens > 0 {
+		p.MaxOutputTokens = maxTokens
+	}
+	if *effort != "" {
+		p.EffortLevel = *effort
+	}
+	if *timeoutMs > 0 {
+		p.TimeoutMs = timeoutMs
+	}
+	if *noThinking {
+		p.DisableThinking = true
+	}
 	if *customHeaders != "" {
 		p.CustomHeaders = make(map[string]string)
 		for _, line := range strings.Split(*customHeaders, "\n") {
