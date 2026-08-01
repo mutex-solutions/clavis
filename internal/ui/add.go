@@ -40,7 +40,7 @@ func AddProfile() (*AddResult, error) {
 		case 0:
 			p, url, key, err := wizardProvider()
 			if err != nil {
-				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { continue } // first step, no back
+				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { return nil, errCancel }
 				return nil, err
 			}
 			providerID = p
