@@ -17,7 +17,8 @@
       "needsKey": true,
       "keyUrl": "https://platform.deepseek.com/api_keys",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    }
+    },
+    "modelsUrl": "https://api.deepseek.com/v1/models"
   },
   {
     "id": "zai",
@@ -68,8 +69,7 @@
       "keyUrl": "",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
     }
-  }
-  ,
+  },
   {
     "id": "maas",
     "displayName": "Alibaba MaaS (token-plan)",

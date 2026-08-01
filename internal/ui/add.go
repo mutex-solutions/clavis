@@ -79,7 +79,7 @@ func AddProfile() (*AddResult, error) {
 
 	// Step 3: Fetch models live from the provider
 	fmt.Println(DimStyle.Render("  Fetching models from " + prov.DisplayName + "..."))
-	models, err := provider.FetchModels(baseURL, apiKey)
+	models, err := provider.FetchModels(baseURL, prov.ModelsEndpoint(), apiKey)
 	if err != nil {
 		fmt.Println(Warn(fmt.Sprintf("Could not fetch models: %v", err)))
 		fmt.Println(DimStyle.Render("  Falling back to manual model entry."))

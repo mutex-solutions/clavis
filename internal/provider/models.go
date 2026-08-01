@@ -11,13 +11,16 @@ import (
 )
 
 // FetchModels tries to get the current model list from a provider.
-// Strategy: try baseURL/v1/models first, then strip the path prefix and try
-// again at the root (e.g., api.deepseek.com/v1/models when the anthropic
-// endpoint is api.deepseek.com/anthropic/v1/messages).
-func FetchModels(baseURL, apiKey string) ([]ModelInfo, error) {
-	urls := modelListURLs(baseURL)
+// Uses modelsURL if set, otherwise falls back to baseURL.
+// Strategy: try modelsURL/v1/models first, then strip path prefix and try
+// root-level /v1/models as fallback.
+func FetchModels(baseURL, modelsURL, apiKey string) ([]ModelInfo, error) {
+	searchURL := modelsURL
+	if searchURL == "" {
+		searchURL = baseURL
+	}
 
-	for _, candidate := range urls {
+	for _, candidate := range modelListURLs(searchURL) {
 		models, err := fetch(candidate, apiKey)
 		if err == nil {
 			return models, nil
@@ -26,12 +29,10 @@ func FetchModels(baseURL, apiKey string) ([]ModelInfo, error) {
 	return nil, fmt.Errorf("could not fetch models from any endpoint")
 }
 
-// modelListURLs returns candidate /v1/models URLs to try.
 func modelListURLs(baseURL string) []string {
 	cleaned := strings.TrimRight(baseURL, "/")
 	candidates := []string{cleaned + "/v1/models"}
 
-	// If baseURL has a path prefix (e.g. /anthropic), also try the root.
 	if u, err := url.Parse(cleaned); err == nil && u.Path != "" && u.Path != "/" {
 		u.Path = "/v1/models"
 		candidates = append(candidates, u.String())

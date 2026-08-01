@@ -14,6 +14,7 @@ type Provider struct {
 	ID          string     `json:"id"`
 	DisplayName string     `json:"displayName"`
 	BaseURL     string     `json:"baseUrl"`
+	ModelsURL   string     `json:"modelsUrl,omitempty"` // optional, falls back to baseUrl
 	Auth        AuthConfig `json:"auth"`
 }
 
@@ -59,4 +60,13 @@ func Get(id string) (Provider, error) {
 		}
 	}
 	return Provider{}, fmt.Errorf("provider %q not found", id)
+}
+
+// ModelsEndpoint returns the models endpoint URL for this provider.
+// Uses ModelsURL if set, otherwise uses BaseURL.
+func (p *Provider) ModelsEndpoint() string {
+	if p.ModelsURL != "" {
+		return p.ModelsURL
+	}
+	return p.BaseURL
 }
