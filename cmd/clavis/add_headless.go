@@ -118,12 +118,18 @@ func runAddOrHeadless(args []string) {
 	noBetas := prov.ID != "anthropic"
 	noAttr := prov.ID != "anthropic"
 
+	// Check for name collision before saving.
+	if profile.Exists(name) {
+		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Profile %q already exists", name)))
+		os.Exit(1)
+	}
+
 	fmt.Print(ui.DimStyle.Render("  Validating... "))
 	if err := provider.Ping(url, apiKey, sonnet); err != nil {
-		fmt.Println(ui.Warn(fmt.Sprintf("Could not verify key: %v", err)))
-	} else {
-		fmt.Println(ui.Success("Key valid"))
+		fmt.Println(ui.Error(fmt.Sprintf("Validation failed: %v", err)))
+		os.Exit(1)
 	}
+	fmt.Println(ui.Success("Key valid"))
 
 	p := &profile.Profile{
 		Name:                       name,

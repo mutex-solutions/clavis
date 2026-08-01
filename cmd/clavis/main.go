@@ -30,9 +30,16 @@ func main() {
 	case "add":
 		runAddOrHeadless(args[1:])
 	case "list", "ls":
+		if len(args) > 1 && args[1] == "--json" { runListJSON(); break }
 		runList()
 	case "remove", "rm":
 		runRemove(args[1:])
+	case "completion":
+		if len(args) > 1 && args[1] == "install" {
+			runInstallCompletion(args[2:])
+		} else {
+			runCompletion(args[1:])
+		}
 	case "providers":
 		runProviders()
 	case "validate":
@@ -69,6 +76,7 @@ Usage:
   clavis providers            Show provider catalog
   clavis validate <name>      Ping a profile's provider
   clavis version              Print version
+	clavis completion <shell>    Generate shell completion script
 
 Examples:
   clavis                                # TUI picker
