@@ -49,7 +49,7 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 	cmd.Stderr = os.Stderr
 	// Isolate claude in its own process group so terminal signals (Ctrl+C)
 	// don't double-deliver. On parent death, the kernel sends SIGTERM.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
+	cmd.SysProcAttr = setPlatformProcAttr()
 
 	// Signal forwarding: catch SIGINT/SIGTERM and forward to child
 	sigCh := make(chan os.Signal, 1)

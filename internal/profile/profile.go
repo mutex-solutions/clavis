@@ -111,19 +111,32 @@ func (p *Profile) Validate() error {
 	return nil
 }
 
-// ValidName checks if a profile name is safe (no path traversal).
+// Reserved profile names that conflict with clavis subcommands.
+var reserved = map[string]bool{
+	"add": true, "list": true, "ls": true, "remove": true, "rm": true,
+	"start": true, "providers": true, "validate": true, "version": true,
+	"help": true, "switch": true, "edit": true, "info": true, "env": true,
+}
+
+// ValidName checks if a profile name is safe for use as a directory name.
 func ValidName(name string) error {
 	if name == "" {
 		return fmt.Errorf("name is required")
 	}
-	if strings.ContainsAny(name, "/\\") {
-		return fmt.Errorf("name must not contain path separators")
+	if reserved[name] {
+		return fmt.Errorf("name %q is reserved (conflicts with a clavis command)", name)
+	}
+	if strings.ContainsAny(name, "/\\\t\n\r\b") {
+		return fmt.Errorf("name must not contain path separators or control characters")
 	}
 	if strings.Contains(name, "..") {
 		return fmt.Errorf("name must not contain '..'")
 	}
 	if name == "." {
 		return fmt.Errorf("invalid name")
+	}
+	if strings.HasPrefix(name, "-") {
+		return fmt.Errorf("name must not start with '-'")
 	}
 	return nil
 }
@@ -161,6 +174,9 @@ func Load(name string) (*Profile, error) {
 	}
 	// Validate the name inside the JSON matches what was requested
 	// (prevents a corrupted profile.json from redirecting paths).
+	if p.Name != name {
+		return nil, fmt.Errorf("profile %q has mismatched internal name %q", name, p.Name)
+	}
 	if err := ValidName(p.Name); err != nil {
 		return nil, fmt.Errorf("profile %q has invalid internal name: %w", name, err)
 	}
@@ -186,8 +202,8 @@ func LoadKey(name string) (string, error) {
 // Save writes a profile and its API key to disk.
 // Uses atomic write (temp file + rename) to prevent corruption on disk full.
 func Save(p *Profile, apiKey string) error {
-	if err := ValidName(p.Name); err != nil {
-		return err
+	if err := p.Validate(); err != nil {
+		return fmt.Errorf("invalid profile: %w", err)
 	}
 
 	// Normalize base URL: strip trailing slashes.
