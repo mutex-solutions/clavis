@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"strings"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 // style). Returns nil, error if both fail or no models found — callers should
 // fall back to manual model entry.
 func FetchModels(baseURL, apiKey string) ([]ModelInfo, error) {
-	url := baseURL + "/v1/models"
+	url := strings.TrimRight(baseURL, "/") + "/v1/models"
 
 	// Try Bearer auth first (Anthropic, OpenRouter, DeepSeek, MaaS).
 	models, err := fetchWithAuth(url, "Bearer "+apiKey)

@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // Ping sends a minimal request to a provider's Messages API to validate the
-// key and endpoint. Returns nil on success (HTTP 2xx), or an error.
+// key and endpoint. Tries Bearer auth first, then X-Api-Key (MiniMax style).
+// Returns nil on success (HTTP 2xx), or an error.
 func Ping(baseURL, apiKey, model string) error {
-	url := baseURL + "/v1/messages"
+	// Normalize: strip trailing slashes to prevent // in URL.
+	url := strings.TrimRight(baseURL, "/") + "/v1/messages"
 
 	body := map[string]interface{}{
 		"model":      model,
@@ -26,14 +29,29 @@ func Ping(baseURL, apiKey, model string) error {
 		return fmt.Errorf("marshal request body: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
+	// Try Bearer first, then X-Api-Key.
+	for _, authVal := range []string{"Bearer " + apiKey, apiKey} {
+		err = pingWithAuth(url, data, authVal)
+		if err == nil {
+			return nil
+		}
+	}
+	return err
+}
+
+func pingWithAuth(url string, body []byte, authValue string) error {
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("build HTTP request: %w", err)
+		return fmt.Errorf("build request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
+	if authValue != "" {
+		req.Header.Set("Authorization", authValue)
+		req.Header.Set("X-Api-Key", authValue)
+	}
+	// Do NOT send anthropic-version — it's Anthropic-specific and 3P providers
+	// like MiniMax, Z.ai, MaaS may reject it.
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
@@ -46,7 +64,6 @@ func Ping(baseURL, apiKey, model string) error {
 		return nil
 	}
 
-	// Try to read error body
 	var errBody struct {
 		Error struct {
 			Message string `json:"message"`
