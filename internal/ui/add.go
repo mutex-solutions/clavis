@@ -141,7 +141,9 @@ func selectOneModel(models []provider.ModelInfo) (opus, sonnet, haiku, subagent 
 	}
 	m := models[0].ID
 	if err := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Title("Select model").Options(opts...).Value(&m),
+		huh.NewSelect[string]().Title("Select model").
+			Description(DimStyle.Render("Press / to search, ↑↓ to navigate")).
+			Options(opts...).Value(&m),
 	)).Run(); err != nil {
 		return "", "", "", "", err
 	}
@@ -163,9 +165,11 @@ func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, suba
 	sameAsOpus := "(same as opus)"
 
 	opus = defaultModel
+	filterHint := DimStyle.Render("Press / to search, ↑↓ to navigate, enter to select")
+
 	fields := []huh.Field{
 		huh.NewSelect[string]().Title("Opus model (hard reasoning)").
-			Options(opts()...).Value(&opus),
+			Description(filterHint).Options(opts()...).Value(&opus),
 	}
 
 	sonnet = defaultModel
@@ -173,7 +177,7 @@ func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, suba
 	sOpts = append(sOpts, huh.NewOption(sameAsOpus, ""))
 	fields = append(fields,
 		huh.NewSelect[string]().Title("Sonnet model (daily driver)").
-			Description("Defaults to same as opus").Options(sOpts...).Value(&sonnet))
+			Description("Defaults to same as opus. " + filterHint).Options(sOpts...).Value(&sonnet))
 
 	haiku = defaultModel
 	hOpts := opts()
