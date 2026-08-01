@@ -307,6 +307,37 @@ func Exists(name string) bool {
 	return err == nil
 }
 
+// NextAlias generates a unique auto-name for a provider.
+// Returns e.g. "deepseek-1", "deepseek-2", etc.
+func NextAlias(providerID string) string {
+	existing, _ := List()
+	count := 0
+	for _, p := range existing {
+		if p.ProviderID == providerID {
+			count++
+		}
+	}
+	for i := count + 1; ; i++ {
+		name := fmt.Sprintf("%s-%d", providerID, i)
+		if !Exists(name) {
+			return name
+		}
+	}
+}
+
+// ListByProvider returns profiles grouped by provider ID.
+func ListByProvider() (map[string][]*Profile, error) {
+	profiles, err := List()
+	if err != nil {
+		return nil, err
+	}
+	grouped := make(map[string][]*Profile)
+	for _, p := range profiles {
+		grouped[p.ProviderID] = append(grouped[p.ProviderID], p)
+	}
+	return grouped, nil
+}
+
 // --- State (last-used) ---
 
 type state struct {

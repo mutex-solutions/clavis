@@ -14,45 +14,24 @@ type AddResult struct {
 	APIKey  string
 }
 
-// AddProfile runs the inline add-profile wizard.
+// AddProfile runs the provider-first inline add wizard.
+// Flow: provider → key → fetch models → alias (optional) → tiers → options.
 func AddProfile() (*AddResult, error) {
 	providers := provider.All()
 
-	// Step 1: Name + Provider
-	var name string
+	// Step 1: Provider selection (FIRST)
 	var providerID string
-
 	providerOptions := make([]huh.Option[string], 0, len(providers))
 	for _, p := range providers {
-		label := p.DisplayName
-		providerOptions = append(providerOptions, huh.NewOption(label, p.ID))
+		providerOptions = append(providerOptions, huh.NewOption(p.DisplayName, p.ID))
 	}
 
-	nameForm := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Profile name").
-				Description("A short alias, e.g. \"deepseek\" or \"work\"").
-				Placeholder("my-profile").
-				Validate(func(s string) error {
-					if err := profile.ValidName(s); err != nil {
-						return err
-					}
-					if profile.Exists(s) {
-						return fmt.Errorf("profile %q already exists", s)
-					}
-					return nil
-				}).
-				Value(&name),
-
-			huh.NewSelect[string]().
-				Title("Provider").
-				Options(providerOptions...).
-				Value(&providerID),
-		),
-	)
-
-	if err := nameForm.Run(); err != nil {
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Select a provider").
+			Options(providerOptions...).
+			Value(&providerID),
+	)).Run(); err != nil {
 		return nil, err
 	}
 
@@ -68,8 +47,7 @@ func AddProfile() (*AddResult, error) {
 	var keyFields []huh.Field
 	if providerID == "custom" {
 		keyFields = append(keyFields,
-			huh.NewInput().
-				Title("Base URL").
+			huh.NewInput().Title("Base URL").
 				Description("Anthropic-compatible endpoint URL").
 				Placeholder("https://api.example.com/anthropic").
 				Validate(func(s string) error {
@@ -77,9 +55,7 @@ func AddProfile() (*AddResult, error) {
 						return fmt.Errorf("base URL is required for custom providers")
 					}
 					return nil
-				}).
-				Value(&baseURL),
-		)
+				}).Value(&baseURL))
 	}
 
 	if prov.Auth.KeyURL != "" {
@@ -87,8 +63,7 @@ func AddProfile() (*AddResult, error) {
 	}
 
 	keyFields = append(keyFields,
-		huh.NewInput().
-			Title("API key").
+		huh.NewInput().Title("API key").
 			EchoMode(huh.EchoModePassword).
 			Placeholder("sk-...").
 			Validate(func(s string) error {
@@ -96,12 +71,9 @@ func AddProfile() (*AddResult, error) {
 					return fmt.Errorf("API key is required")
 				}
 				return nil
-			}).
-			Value(&apiKey),
-	)
+			}).Value(&apiKey))
 
-	keyForm := huh.NewForm(huh.NewGroup(keyFields...))
-	if err := keyForm.Run(); err != nil {
+	if err := huh.NewForm(huh.NewGroup(keyFields...)).Run(); err != nil {
 		return nil, err
 	}
 
@@ -116,70 +88,78 @@ func AddProfile() (*AddResult, error) {
 		fmt.Println(Success(fmt.Sprintf("Found %d models", len(models))))
 	}
 
-	// Step 4: Model tier selection
+	// Step 4: Alias — OPTIONAL, auto-generated if skipped
+	autoName := profile.NextAlias(providerID)
+	var alias string
+
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewInput().Title("Profile alias (optional)").
+			Description("Skip for auto-name: " + CommandStyle.Render(autoName)).
+			Placeholder(autoName).
+			Validate(func(s string) error {
+				if s == "" {
+					return nil
+				}
+				if err := profile.ValidName(s); err != nil {
+					return err
+				}
+				if profile.Exists(s) {
+					return fmt.Errorf("%q already exists", s)
+				}
+				return nil
+			}).Value(&alias),
+	)).Run(); err != nil {
+		return nil, err
+	}
+	if alias == "" {
+		alias = autoName
+	}
+
+	// Step 5: Model tier selection
 	sonnetModel, opusModel, haikuModel, subagentModel, err := selectTiers(models)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 4: Options
-	disableTraffic := prov.ID != "anthropic" // default true for 3P
+	// Step 6: Options
+	disableTraffic := prov.ID != "anthropic"
 	disableBetas := prov.ID != "anthropic"
 	minimalMode := false
 	disableAttribution := false
 
-	optForm := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Disable nonessential traffic").
-				Description("Telemetry, update checks, etc.").
-				Affirmative("Yes").
-				Negative("No").
-				Value(&disableTraffic),
-
-			huh.NewConfirm().
-				Title("Disable experimental betas").
-				Description("Prevents beta headers causing errors on 3P").
-				Affirmative("Yes").
-				Negative("No").
-				Value(&disableBetas),
-
-			huh.NewConfirm().
-				Title("Minimal mode (--bare)").
-				Description("Skip hooks, CLAUDE.md, plugins, LSP").
-				Affirmative("Yes").
-				Negative("No").
-				Value(&minimalMode),
-
-			huh.NewConfirm().
-				Title("Disable attribution header").
-				Description("Strip attribution from system prompt").
-				Affirmative("Yes").
-				Negative("No").
-				Value(&disableAttribution),
-		),
-	)
-
-	if err := optForm.Run(); err != nil {
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title("Disable nonessential traffic").
+			Description("Telemetry, update checks, etc.").
+			Affirmative("Yes").Negative("No").Value(&disableTraffic),
+		huh.NewConfirm().Title("Disable experimental betas").
+			Description("Prevents beta headers causing errors on 3P").
+			Affirmative("Yes").Negative("No").Value(&disableBetas),
+		huh.NewConfirm().Title("Minimal mode (--bare)").
+			Description("Skip hooks, CLAUDE.md, plugins, LSP").
+			Affirmative("Yes").Negative("No").Value(&minimalMode),
+		huh.NewConfirm().Title("Disable attribution header").
+			Description("Strip attribution from system prompt").
+			Affirmative("Yes").Negative("No").Value(&disableAttribution),
+	)).Run(); err != nil {
 		return nil, err
 	}
 
-	// Build profile
-	p := &profile.Profile{
-		Name:                       name,
-		ProviderID:                 providerID,
-		BaseURL:                    baseURL,
-		SonnetModel:                sonnetModel,
-		OpusModel:                  opusModel,
-		HaikuModel:                 haikuModel,
-		SubagentModel:              subagentModel,
-		DisableNonessentialTraffic: &disableTraffic,
-		DisableExperimentalBetas:   &disableBetas,
-		DisableAttribution:         &disableAttribution,
-		MinimalMode:                minimalMode,
-	}
-
-	return &AddResult{Profile: p, APIKey: apiKey}, nil
+	return &AddResult{
+		Profile: &profile.Profile{
+			Name:                       alias,
+			ProviderID:                 providerID,
+			BaseURL:                    baseURL,
+			SonnetModel:                sonnetModel,
+			OpusModel:                  opusModel,
+			HaikuModel:                 haikuModel,
+			SubagentModel:              subagentModel,
+			DisableNonessentialTraffic: &disableTraffic,
+			DisableExperimentalBetas:   &disableBetas,
+			DisableAttribution:         &disableAttribution,
+			MinimalMode:                minimalMode,
+		},
+		APIKey: apiKey,
+	}, nil
 }
 
 // selectTiers runs dynamic model tier selection from live-fetched models.
@@ -189,103 +169,70 @@ func selectTiers(models []provider.ModelInfo) (sonnet, opus, haiku, subagent str
 	}
 
 	modelOptions := func() []huh.Option[string] {
-		opts := make([]huh.Option[string], 0, len(models)+1)
-		for _, m := range models {
+		opts := make([]huh.Option[string], len(models))
+		for i, m := range models {
 			label := m.ID
 			if m.OwnedBy != "" {
 				label += "  " + DimStyle.Render("("+m.OwnedBy+")")
 			}
-			opts = append(opts, huh.NewOption(label, m.ID))
+			opts[i] = huh.NewOption(label, m.ID)
 		}
 		return opts
 	}
 
 	sameAsSonnet := "(same as sonnet)"
-	defaultModel := models[0].ID // first model is default for all tiers
+	defaultModel := models[0].ID
 
 	sonnet = defaultModel
 
 	fields := []huh.Field{
-		huh.NewSelect[string]().
-			Title("Sonnet model (daily driver) — REQUIRED").
-			Options(modelOptions()...).
-			Value(&sonnet),
+		huh.NewSelect[string]().Title("Sonnet model (daily driver) — REQUIRED").
+			Options(modelOptions()...).Value(&sonnet),
 	}
 
-	// Opus — optional
 	opus = defaultModel
 	opusOpts := modelOptions()
 	opusOpts = append(opusOpts, huh.NewOption(sameAsSonnet, ""))
 	fields = append(fields,
-		huh.NewSelect[string]().
-			Title("Opus model (hard reasoning) — optional").
-			Options(opusOpts...).
-			Value(&opus),
-	)
+		huh.NewSelect[string]().Title("Opus model (hard reasoning) — optional").
+			Options(opusOpts...).Value(&opus))
 
-	// Haiku — optional
 	haiku = defaultModel
 	haikuOpts := modelOptions()
 	haikuOpts = append(haikuOpts, huh.NewOption(sameAsSonnet, ""))
 	fields = append(fields,
-		huh.NewSelect[string]().
-			Title("Haiku model (fast/cheap) — optional").
-			Options(haikuOpts...).
-			Value(&haiku),
-	)
+		huh.NewSelect[string]().Title("Haiku model (fast/cheap) — optional").
+			Options(haikuOpts...).Value(&haiku))
 
-	// Subagent — optional
 	subagent = defaultModel
 	subOpts := modelOptions()
 	subOpts = append(subOpts, huh.NewOption(sameAsSonnet, ""))
 	fields = append(fields,
-		huh.NewSelect[string]().
-			Title("Subagent model — optional").
-			Options(subOpts...).
-			Value(&subagent),
-	)
+		huh.NewSelect[string]().Title("Subagent model — optional").
+			Options(subOpts...).Value(&subagent))
 
-	form := huh.NewForm(huh.NewGroup(fields...))
-	if err := form.Run(); err != nil {
+	if err := huh.NewForm(huh.NewGroup(fields...)).Run(); err != nil {
 		return "", "", "", "", err
 	}
-
 	return sonnet, opus, haiku, subagent, nil
 }
 
-// selectTiersFreeText handles the fallback when no models were fetched.
 func selectTiersFreeText() (sonnet, opus, haiku, subagent string, err error) {
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Sonnet model ID (daily driver) — REQUIRED").
-				Placeholder("e.g. my-model-v1").
-				Validate(func(s string) error {
-					if s == "" {
-						return fmt.Errorf("sonnet model is required")
-					}
-					return nil
-				}).
-				Value(&sonnet),
-
-			huh.NewInput().
-				Title("Opus model ID — optional (enter to skip)").
-				Placeholder("same as sonnet").
-				Value(&opus),
-
-			huh.NewInput().
-				Title("Haiku model ID — optional (enter to skip)").
-				Placeholder("same as sonnet").
-				Value(&haiku),
-
-			huh.NewInput().
-				Title("Subagent model ID — optional (enter to skip)").
-				Placeholder("same as sonnet").
-				Value(&subagent),
-		),
-	)
-
-	if err := form.Run(); err != nil {
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewInput().Title("Sonnet model ID (daily driver) — REQUIRED").
+			Placeholder("model-id").Validate(func(s string) error {
+			if s == "" {
+				return fmt.Errorf("required")
+			}
+			return nil
+		}).Value(&sonnet),
+		huh.NewInput().Title("Opus model ID — optional").
+			Placeholder("same as sonnet").Value(&opus),
+		huh.NewInput().Title("Haiku model ID — optional").
+			Placeholder("same as sonnet").Value(&haiku),
+		huh.NewInput().Title("Subagent model ID — optional").
+			Placeholder("same as sonnet").Value(&subagent),
+	)).Run(); err != nil {
 		return "", "", "", "", err
 	}
 	return sonnet, opus, haiku, subagent, nil

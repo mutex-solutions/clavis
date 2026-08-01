@@ -173,13 +173,17 @@ func runAdd() {
 
 // runList prints all profiles as a styled table.
 func runList() {
-	profiles, err := profile.List()
+	grouped, err := profile.ListByProvider()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, ui.Error(err.Error()))
 		os.Exit(1)
 	}
 
-	if len(profiles) == 0 {
+	total := 0
+	for _, g := range grouped {
+		total += len(g)
+	}
+	if total == 0 {
 		fmt.Println(ui.DimStyle.Render("No profiles. Run: clavis add"))
 		return
 	}
@@ -187,23 +191,37 @@ func runList() {
 	lastUsed := profile.LoadLastUsed()
 
 	fmt.Println()
-	fmt.Printf("  %-14s %-16s %-22s %-10s\n", "NAME", "PROVIDER", "SONNET MODEL", "UPDATED")
-	for _, p := range profiles {
-		marker := " "
-		if p.Name == lastUsed {
-			marker = "*"
+	// Group by provider
+	providers := provider.All()
+	for _, prov := range providers {
+		profiles, ok := grouped[prov.ID]
+		if !ok || len(profiles) == 0 {
+			continue
 		}
-		updated := ""
-		if p.UpdatedAt != "" {
-			t, err := time.Parse(time.RFC3339, p.UpdatedAt)
-			if err == nil {
-				updated = formatRelativeTime(time.Since(t))
+
+		fmt.Printf("  %s\n", ui.TitleStyle.Render(prov.DisplayName))
+
+		for _, p := range profiles {
+			marker := " "
+			if p.Name == lastUsed {
+				marker = "*"
 			}
+			updated := ""
+			if p.UpdatedAt != "" {
+				t, err := time.Parse(time.RFC3339, p.UpdatedAt)
+				if err == nil {
+					updated = formatRelativeTime(time.Since(t))
+				}
+			}
+			sonnet := p.SonnetModel
+			if sonnet == "" {
+				sonnet = "(unset)"
+			}
+			fmt.Printf("  %s %-20s  %-24s  %s\n", marker, p.Name, sonnet, ui.DimStyle.Render(updated))
 		}
-		fmt.Printf(" %s%-13s %-16s %-22s %-10s\n", marker, p.Name, p.ProviderID, p.SonnetModel, updated)
 	}
 	fmt.Println()
-	fmt.Printf("  %d profiles in %s\n", len(profiles), profile.Dir())
+	fmt.Printf("  %d profiles in %s\n", total, profile.Dir())
 	fmt.Println()
 }
 
