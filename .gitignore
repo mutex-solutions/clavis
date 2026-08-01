@@ -1,6 +1,8 @@
 # Binaries
 bin/
+dist/
 *.exe
+clavis
 
 # OS
 .DS_Store
