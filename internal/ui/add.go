@@ -8,13 +8,11 @@ import (
 	"github.com/dinhlongviolin1/clavis/internal/provider"
 )
 
-// AddResult holds everything collected by the add wizard.
 type AddResult struct {
 	Profile *profile.Profile
 	APIKey  string
 }
 
-// AddProfile runs the provider-first inline add wizard.
 func AddProfile() (*AddResult, error) {
 	providers := provider.All()
 
@@ -93,29 +91,15 @@ func AddProfile() (*AddResult, error) {
 	}
 	if alias == "" { alias = autoName }
 
-	// Opus first, then rest fall back to opus.
-	opusModel, sonnetModel, haikuModel, subagentModel, err := selectTiers(models)
+	// Model selection: simple or detailed?
+	opusModel, sonnetModel, haikuModel, subagentModel, err := selectModels(models)
 	if err != nil {
 		return nil, err
 	}
 
-	disableTraffic := prov.ID != "anthropic"
-	disableBetas := prov.ID != "anthropic"
-	minimalMode := false
-	disableAttribution := false
-
-	if err := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().Title("Disable nonessential traffic").Description("Telemetry, update checks, etc.").
-			Affirmative("Yes").Negative("No").Value(&disableTraffic),
-		huh.NewConfirm().Title("Disable experimental betas").Description("Prevents beta headers causing errors on 3P").
-			Affirmative("Yes").Negative("No").Value(&disableBetas),
-		huh.NewConfirm().Title("Minimal mode (--bare)").Description("Skip hooks, CLAUDE.md, plugins, LSP").
-			Affirmative("Yes").Negative("No").Value(&minimalMode),
-		huh.NewConfirm().Title("Disable attribution header").Description("Strip attribution from system prompt").
-			Affirmative("Yes").Negative("No").Value(&disableAttribution),
-	)).Run(); err != nil {
-		return nil, err
-	}
+	// Options: advanced or default?
+	disableTraffic, disableBetas, minimalMode, disableAttribution :=
+		selectOptions(prov.ID != "anthropic")
 
 	return &AddResult{
 		Profile: &profile.Profile{
@@ -131,12 +115,46 @@ func AddProfile() (*AddResult, error) {
 	}, nil
 }
 
-// selectTiers — Opus first (hardest reasoning), rest fall back to it.
-func selectTiers(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
+// selectModels asks simple-vs-detailed, then picks models.
+func selectModels(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
 	if len(models) == 0 {
 		return selectTiersFreeText()
 	}
 
+	// Simple: one model for everything.
+	// Detailed: per-tier selection.
+	var simple bool
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title("Simple model setup?").
+			Description("One model for all tiers. Choose 'No' to pick per-tier models.").
+			Affirmative("Yes, one model").Negative("No, per-tier").Value(&simple),
+	)).Run(); err != nil {
+		return "", "", "", "", err
+	}
+
+	if simple {
+		return selectOneModel(models)
+	}
+	return selectTiersDetailed(models)
+}
+
+func selectOneModel(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
+	opts := make([]huh.Option[string], len(models))
+	for i, m := range models {
+		l := m.ID
+		if m.OwnedBy != "" { l += "  " + DimStyle.Render("("+m.OwnedBy+")") }
+		opts[i] = huh.NewOption(l, m.ID)
+	}
+	m := models[0].ID
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().Title("Select model").Options(opts...).Value(&m),
+	)).Run(); err != nil {
+		return "", "", "", "", err
+	}
+	return m, m, m, m, nil
+}
+
+func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
 	opts := func() []huh.Option[string] {
 		out := make([]huh.Option[string], len(models))
 		for i, m := range models {
@@ -151,32 +169,31 @@ func selectTiers(models []provider.ModelInfo) (opus, sonnet, haiku, subagent str
 	sameAsOpus := "(same as opus)"
 
 	opus = defaultModel
-
 	fields := []huh.Field{
-		huh.NewSelect[string]().Title("Opus model (hard reasoning) — PRIMARY").
-Options(opts()...).Value(&opus),
+		huh.NewSelect[string]().Title("Opus model (hard reasoning)").
+			Options(opts()...).Value(&opus),
 	}
 
 	sonnet = defaultModel
 	sOpts := opts()
 	sOpts = append(sOpts, huh.NewOption(sameAsOpus, ""))
 	fields = append(fields,
-		huh.NewSelect[string]().Title("Sonnet model (daily driver) — optional").
-Description("Defaults to same as opus").Options(sOpts...).Value(&sonnet))
+		huh.NewSelect[string]().Title("Sonnet model (daily driver)").
+			Description("Defaults to same as opus").Options(sOpts...).Value(&sonnet))
 
 	haiku = defaultModel
 	hOpts := opts()
 	hOpts = append(hOpts, huh.NewOption(sameAsOpus, ""))
 	fields = append(fields,
-		huh.NewSelect[string]().Title("Haiku model (fast/cheap) — optional").
-Description("Defaults to same as opus").Options(hOpts...).Value(&haiku))
+		huh.NewSelect[string]().Title("Haiku model (fast/cheap)").
+			Description("Defaults to same as opus").Options(hOpts...).Value(&haiku))
 
 	subagent = defaultModel
 	subOpts := opts()
 	subOpts = append(subOpts, huh.NewOption(sameAsOpus, ""))
 	fields = append(fields,
-		huh.NewSelect[string]().Title("Subagent model — optional").
-Description("Defaults to same as opus").Options(subOpts...).Value(&subagent))
+		huh.NewSelect[string]().Title("Subagent model").
+			Description("Defaults to same as opus").Options(subOpts...).Value(&subagent))
 
 	if err := huh.NewForm(huh.NewGroup(fields...)).Run(); err != nil {
 		return "", "", "", "", err
@@ -184,9 +201,40 @@ Description("Defaults to same as opus").Options(subOpts...).Value(&subagent))
 	return opus, sonnet, haiku, subagent, nil
 }
 
+// selectOptions asks whether to configure advanced options.
+func selectOptions(is3P bool) (noTraffic, noBetas, minimal, noAttr bool) {
+	noTraffic = is3P
+	noBetas = is3P
+
+	var showAdvanced bool
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title("Configure advanced options?").
+			Description("Telemetry, betas, bare mode, attribution. Defaults are fine for most providers.").
+			Affirmative("Yes, customize").Negative("No, use defaults").Value(&showAdvanced),
+	)).Run(); err != nil {
+		return
+	}
+	if !showAdvanced {
+		return
+	}
+
+	huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title("Disable nonessential traffic").
+			Affirmative("Yes").Negative("No").Value(&noTraffic),
+		huh.NewConfirm().Title("Disable experimental betas").
+			Affirmative("Yes").Negative("No").Value(&noBetas),
+		huh.NewConfirm().Title("Minimal mode (--bare)").
+			Affirmative("Yes").Negative("No").Value(&minimal),
+		huh.NewConfirm().Title("Disable attribution header").
+			Affirmative("Yes").Negative("No").Value(&noAttr),
+	)).Run()
+
+	return
+}
+
 func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
 	if err := huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Opus model ID (hard reasoning) — PRIMARY").Placeholder("model-id").
+		huh.NewInput().Title("Opus model ID — PRIMARY").Placeholder("model-id").
 			Validate(func(s string) error { if s == "" { return fmt.Errorf("required") }; return nil }).Value(&opus),
 		huh.NewInput().Title("Sonnet model ID — optional").Placeholder("same as opus").Value(&sonnet),
 		huh.NewInput().Title("Haiku model ID — optional").Placeholder("same as opus").Value(&haiku),
