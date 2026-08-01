@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/dinhlongviolin1/clavis/internal/profile"
@@ -89,34 +91,71 @@ func AddProfile() (*AddResult, error) {
 	}
 	if alias == "" { alias = autoName }
 
-	opusModel, sonnetModel, haikuModel, subagentModel, err := selectModels(models)
-	if err != nil {
+	opusModel, sonnetModel, haikuModel, subagentModel := selectModels(models)
+
+	// Advanced options
+	var showAdvanced bool
+	var effort string
+	var noThinking bool
+	var compactPct int
+
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title("Advanced configuration?").
+			Description("Fine-tune effort, thinking, and compaction. Defaults work for most providers.").
+			Affirmative("Yes, customize").Negative("No, use defaults").Value(&showAdvanced),
+	)).Run(); err != nil {
 		return nil, err
 	}
 
-	// Smart defaults — never shown to users.
-	// Telemetry, betas, attribution auto-disabled for 3P providers.
-	is3P := prov.ID != "anthropic"
-	noTraffic := is3P
-	noBetas := is3P
-	noAttr := is3P
+	if showAdvanced {
+		compactPct, effort, noThinking = selectAdvancedOptions()
+	}
 
-	return &AddResult{
-		Profile: &profile.Profile{
-			Name: alias, ProviderID: providerID, BaseURL: baseURL,
-			OpusModel: opusModel, SonnetModel: sonnetModel,
-			HaikuModel: haikuModel, SubagentModel: subagentModel,
-			DisableNonessentialTraffic: &noTraffic,
-			DisableExperimentalBetas:   &noBetas,
-			DisableAttribution:         &noAttr,
-		},
-		APIKey: apiKey,
-	}, nil
+	is3P := prov.ID != "anthropic"
+	p := &profile.Profile{
+		Name: alias, ProviderID: providerID, BaseURL: baseURL,
+		OpusModel: opusModel, SonnetModel: sonnetModel,
+		HaikuModel: haikuModel, SubagentModel: subagentModel,
+		DisableNonessentialTraffic: &is3P,
+		DisableExperimentalBetas:   &is3P,
+		DisableAttribution:         &is3P,
+	}
+
+	if effort != "" { p.EffortLevel = effort }
+	if noThinking { p.DisableThinking = true }
+	if compactPct > 0 { p.AutoCompactPct = &compactPct }
+
+	return &AddResult{Profile: p, APIKey: apiKey}, nil
 }
 
-func selectModels(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
+func selectModels(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string) {
 	if len(models) == 0 {
 		return selectTiersFreeText()
+	}
+
+	// Pre-filter for large model lists (> 50) to avoid huh rendering bugs.
+	filtered := models
+	if len(models) > 50 {
+		var search string
+		if err := huh.NewForm(huh.NewGroup(
+			huh.NewInput().Title("Search models").
+				Description(fmt.Sprintf("%d models available — type to filter", len(models))).
+				Placeholder("type part of model name...").
+				Value(&search),
+		)).Run(); err != nil {
+			return "", "", "", ""
+		}
+		if search != "" {
+			s := strings.ToLower(search)
+			for _, m := range models {
+				if strings.Contains(strings.ToLower(m.ID), s) {
+					filtered = append(filtered, m)
+				}
+			}
+		}
+		if len(filtered) == 0 {
+			filtered = models // no matches, show all
+		}
 	}
 
 	var simple bool
@@ -125,14 +164,17 @@ func selectModels(models []provider.ModelInfo) (opus, sonnet, haiku, subagent st
 			Description("One model for all tiers. Choose 'No' to pick per-tier.").
 			Affirmative("Yes, one model").Negative("No, per-tier").Value(&simple),
 	)).Run(); err != nil {
-		return "", "", "", "", err
+		return "", "", "", ""
 	}
 
-	if simple { return selectOneModel(models) }
-	return selectTiersDetailed(models)
+	if simple {
+		m := selectOneModel(filtered)
+		return m, m, m, m
+	}
+	return selectTiersDetailed(filtered)
 }
 
-func selectOneModel(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
+func selectOneModel(models []provider.ModelInfo) string {
 	opts := make([]huh.Option[string], len(models))
 	for i, m := range models {
 		l := m.ID
@@ -140,17 +182,15 @@ func selectOneModel(models []provider.ModelInfo) (opus, sonnet, haiku, subagent 
 		opts[i] = huh.NewOption(l, m.ID)
 	}
 	m := models[0].ID
-	if err := huh.NewForm(huh.NewGroup(
+	huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("Select model").
 			Description(DimStyle.Render("Press / to search, ↑↓ to navigate")).
 			Options(opts...).Value(&m),
-	)).Run(); err != nil {
-		return "", "", "", "", err
-	}
-	return m, m, m, m, nil
+	)).Run()
+	return m
 }
 
-func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
+func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string) {
 	opts := func() []huh.Option[string] {
 		out := make([]huh.Option[string], len(models))
 		for i, m := range models {
@@ -161,12 +201,11 @@ func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, suba
 		return out
 	}
 
+	filterHint := DimStyle.Render("Press / to search, ↑↓ to navigate, enter to select")
 	defaultModel := models[0].ID
 	sameAsOpus := "(same as opus)"
 
 	opus = defaultModel
-	filterHint := DimStyle.Render("Press / to search, ↑↓ to navigate, enter to select")
-
 	fields := []huh.Field{
 		huh.NewSelect[string]().Title("Opus model (hard reasoning)").
 			Description(filterHint).Options(opts()...).Value(&opus),
@@ -193,21 +232,58 @@ func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, suba
 		huh.NewSelect[string]().Title("Subagent model").
 			Description("Defaults to same as opus").Options(subOpts...).Value(&subagent))
 
-	if err := huh.NewForm(huh.NewGroup(fields...)).Run(); err != nil {
-		return "", "", "", "", err
-	}
-	return opus, sonnet, haiku, subagent, nil
+	huh.NewForm(huh.NewGroup(fields...)).Run()
+	return opus, sonnet, haiku, subagent
 }
 
-func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
+func selectAdvancedOptions() (compactPct int, effort string, noThinking bool) {
+	effort = "auto"
+
+	var compactStr string
 	if err := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().Title("Effort level").
+			Description("How hard Claude tries. Higher = slower but better reasoning.").
+			Options(
+				huh.NewOption("auto (model default)", "auto"),
+				huh.NewOption("low — fast, less thorough", "low"),
+				huh.NewOption("medium", "medium"),
+				huh.NewOption("high — thorough reasoning", "high"),
+				huh.NewOption("xhigh — very thorough", "xhigh"),
+				huh.NewOption("max — maximum reasoning depth", "max"),
+			).Value(&effort),
+
+		huh.NewConfirm().Title("Disable thinking tokens?").
+			Description("Omit thinking/reasoning tokens. Needed for providers that don't support them.").
+			Affirmative("Yes, disable").Negative("No, keep enabled").Value(&noThinking),
+
+		huh.NewInput().Title("Auto-compact threshold (%)").
+			Description("When to compact context. Lower = compact sooner. Default: 80%. Leave empty to skip.").
+			Placeholder("80").
+			Validate(func(s string) error {
+				if s == "" { return nil }
+				v, err := strconv.Atoi(s)
+				if err != nil || v < 1 || v > 100 {
+					return fmt.Errorf("must be 1–100")
+				}
+				return nil
+			}).Value(&compactStr),
+	)).Run(); err != nil {
+		return 0, "auto", false
+	}
+
+	if compactStr != "" {
+		compactPct, _ = strconv.Atoi(compactStr)
+	}
+	return
+}
+
+func selectTiersFreeText() (opus, sonnet, haiku, subagent string) {
+	huh.NewForm(huh.NewGroup(
 		huh.NewInput().Title("Opus model ID — PRIMARY").Placeholder("model-id").
 			Validate(func(s string) error { if s == "" { return fmt.Errorf("required") }; return nil }).Value(&opus),
 		huh.NewInput().Title("Sonnet model ID — optional").Placeholder("same as opus").Value(&sonnet),
 		huh.NewInput().Title("Haiku model ID — optional").Placeholder("same as opus").Value(&haiku),
 		huh.NewInput().Title("Subagent model ID — optional").Placeholder("same as opus").Value(&subagent),
-	)).Run(); err != nil {
-		return "", "", "", "", err
-	}
-	return opus, sonnet, haiku, subagent, nil
+	)).Run()
+	return opus, sonnet, haiku, subagent
 }
