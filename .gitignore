@@ -1,0 +1,28 @@
+# Binaries
+bin/
+*.exe
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go
+vendor/
+
+# Secrets — NEVER commit
+.env
+*.pem
+
+# Playwright / MCP artifacts
+.playwright-mcp/
+
+# Research docs (not part of the project)
+claude-code-settings.md
+claude-code-env-vars.md
+claude-cli-reference.md

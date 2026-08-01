@@ -1,0 +1,219 @@
+package claude
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+
+	"github.com/dinhlongviolin1/clavis/internal/profile"
+)
+
+// Launch builds the environment from a profile and spawns claude.
+// It blocks until claude exits, then saves last-used state.
+// Returns claude's exit code.
+func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) {
+	env, err := buildEnv(p, apiKey)
+	if err != nil {
+		return 1, fmt.Errorf("build env: %w", err)
+	}
+
+	// Write settings.json if attribution disabled
+	if p.ShouldDisableAttribution() {
+		if err := writeSettings(p); err != nil {
+			return 1, fmt.Errorf("write settings: %w", err)
+		}
+	}
+
+	// Build args
+	args := buildArgs(p, extraArgs)
+
+	// Find claude binary
+	claudePath, err := exec.LookPath("claude")
+	if err != nil {
+		return 1, fmt.Errorf("claude binary not found in PATH — install Claude Code first")
+	}
+
+	cmd := exec.Command(claudePath, args...)
+	cmd.Env = env
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// Signal forwarding: catch SIGINT/SIGTERM and forward to child
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	if err := cmd.Start(); err != nil {
+		return 1, fmt.Errorf("failed to start claude: %w", err)
+	}
+
+	// Forward signals in background
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case sig := <-sigCh:
+				if cmd.Process != nil {
+					_ = cmd.Process.Signal(sig)
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	err = cmd.Wait()
+	close(done)
+
+	// Save last-used state
+	profile.SaveLastUsed(p.Name)
+
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode(), nil
+		}
+		return 1, fmt.Errorf("claude exited with error: %w", err)
+	}
+	return 0, nil
+}
+
+// buildEnv constructs the full environment for the claude child process.
+func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
+	// Start with a copy of current env, minus vars we want to remove or override.
+	// We must strip ALL vars we're about to set, otherwise duplicates appear
+	// and on Linux getenv() returns the FIRST match (the user's shell value).
+	unsetVars := map[string]bool{
+		"ANTHROPIC_API_KEY":           true,
+		"CLAUDE_CODE_OAUTH_TOKEN":     true,
+		"CLAUDE_CREDENTIALS_JSON_B64": true,
+		// Stripped so our profile values take precedence:
+		"CLAUDE_CONFIG_DIR":                    true,
+		"ANTHROPIC_BASE_URL":                   true,
+		"ANTHROPIC_AUTH_TOKEN":                 true,
+		"ANTHROPIC_MODEL":                      true,
+		"ANTHROPIC_DEFAULT_SONNET_MODEL":       true,
+		"ANTHROPIC_DEFAULT_OPUS_MODEL":         true,
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL":        true,
+		"CLAUDE_CODE_SUBAGENT_MODEL":           true,
+		"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE":      true,
+		"CLAUDE_CODE_AUTO_COMPACT_WINDOW":      true,
+		"CLAUDE_CODE_MAX_OUTPUT_TOKENS":        true,
+		"CLAUDE_CODE_EFFORT_LEVEL":             true,
+		"CLAUDE_CODE_DISABLE_THINKING":         true,
+		"API_TIMEOUT_MS":                       true,
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": true,
+		"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS":   true,
+		"ANTHROPIC_CUSTOM_HEADERS":             true,
+	}
+
+	var env []string
+	for _, e := range os.Environ() {
+		key := strings.SplitN(e, "=", 2)[0]
+		if !unsetVars[key] {
+			env = append(env, e)
+		}
+	}
+
+	// Config dir for session isolation
+	configDir := profile.ProfileDir(p.Name)
+
+	// Always set
+	set := map[string]string{
+		"CLAUDE_CONFIG_DIR":                configDir,
+		"ANTHROPIC_BASE_URL":               p.BaseURL,
+		"ANTHROPIC_AUTH_TOKEN":             apiKey,
+		"ANTHROPIC_MODEL":                  p.SonnetModel,
+		"ANTHROPIC_DEFAULT_SONNET_MODEL":   p.SonnetModel,
+		"ANTHROPIC_DEFAULT_OPUS_MODEL":     p.ResolvedOpus(),
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL":    p.ResolvedHaiku(),
+		"CLAUDE_CODE_SUBAGENT_MODEL":       p.ResolvedSubagent(),
+	}
+
+	// Conditionally set
+	if p.AutoCompactPct != nil {
+		set["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = fmt.Sprintf("%d", *p.AutoCompactPct)
+	}
+	if p.ContextWindow != nil {
+		set["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = fmt.Sprintf("%d", *p.ContextWindow)
+	}
+	if p.MaxOutputTokens != nil {
+		set["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = fmt.Sprintf("%d", *p.MaxOutputTokens)
+	}
+	if p.EffortLevel != "" {
+		set["CLAUDE_CODE_EFFORT_LEVEL"] = p.EffortLevel
+	}
+	if p.DisableThinking {
+		set["CLAUDE_CODE_DISABLE_THINKING"] = "1"
+	}
+	if p.TimeoutMs != nil {
+		set["API_TIMEOUT_MS"] = fmt.Sprintf("%d", *p.TimeoutMs)
+	}
+	if p.ShouldDisableNonessentialTraffic() {
+		set["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+	}
+	if p.ShouldDisableExperimentalBetas() {
+		set["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
+	}
+	if len(p.CustomHeaders) > 0 {
+		var parts []string
+		for k, v := range p.CustomHeaders {
+			parts = append(parts, fmt.Sprintf("%s: %s", k, v))
+		}
+		set["ANTHROPIC_CUSTOM_HEADERS"] = strings.Join(parts, "\n")
+	}
+
+	for k, v := range set {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	return env, nil
+}
+
+// buildArgs constructs claude CLI arguments.
+func buildArgs(p *profile.Profile, extraArgs []string) []string {
+	var args []string
+	if p.MinimalMode {
+		args = append(args, "--bare")
+	}
+	args = append(args, extraArgs...)
+	return args
+}
+
+// writeSettings writes a minimal settings.json for attribution control.
+func writeSettings(p *profile.Profile) error {
+	configDir := profile.ProfileDir(p.Name)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return err
+	}
+
+	settingsPath := filepath.Join(configDir, "settings.json")
+
+	// Read existing settings if present (don't clobber)
+	var settings map[string]interface{}
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		_ = json.Unmarshal(data, &settings)
+	}
+	if settings == nil {
+		settings = make(map[string]interface{})
+	}
+
+	// Ensure env block exists
+	envBlock, ok := settings["env"].(map[string]interface{})
+	if !ok {
+		envBlock = make(map[string]interface{})
+	}
+	envBlock["CLAUDE_CODE_ATTRIBUTION_HEADER"] = "0"
+	settings["env"] = envBlock
+
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(settingsPath, append(data, '\n'), 0o644)
+}
