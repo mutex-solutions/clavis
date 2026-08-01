@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -18,28 +19,32 @@ var (
 	msOwner    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	msCount    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	msNoMatch  = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
+	msPin      = lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // yellow star
 )
 
 // selectItem is one entry in the model list.
 type selectItem struct {
-	label string // model ID
-	owner string // provider name (dim)
-	value string // returned on select
+	label  string // model ID
+	owner  string // provider name (dim)
+	value  string // returned on select
+	pinned bool   // recently chosen — floated to the top with a marker
 }
 
 // modelSelect is a bubbletea model for interactive model selection.
 // Unlike huh.Select, it resets the cursor to the top on every filter
-// change and shows ↑/↓ position counts.
+// change, shows ↑/↓ position counts, and floats recently-chosen models
+// to the top of the list.
 type modelSelect struct {
-	title    string
-	hint     string
-	items    []selectItem // all items
-	filtered []selectItem // current filter results
-	cursor   int          // index into filtered
-	offset   int          // first visible row
-	height   int          // visible rows
-	input    textinput.Model
-	aborted  bool
+	title       string
+	hint        string
+	items       []selectItem // all items (pinned first)
+	filtered    []selectItem // current filter results
+	cursor      int          // index into filtered
+	offset      int          // first visible row
+	height      int          // visible rows
+	input       textinput.Model
+	aborted     bool // esc — caller treats as "go back"
+	interrupted bool // ctrl+c — caller exits the process
 }
 
 func newModelSelect(title, hint string, items []selectItem, height int) modelSelect {
@@ -60,7 +65,7 @@ func newModelSelect(title, hint string, items []selectItem, height int) modelSel
 	return m
 }
 
-// applyFilter re-filters items and resets cursor to top.
+// applyFilter re-filters items and resets the cursor to the top.
 func (m *modelSelect) applyFilter() {
 	q := strings.ToLower(m.input.Value())
 	if q == "" {
@@ -89,6 +94,9 @@ func (m modelSelect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.aborted = true
 			return m, tea.Quit
+		case "ctrl+c":
+			m.interrupted = true
+			return m, tea.Quit
 		case "enter":
 			if len(m.filtered) > 0 {
 				return m, tea.Quit
@@ -110,12 +118,10 @@ func (m modelSelect) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "ctrl+c":
-			return m, tea.Quit
 		}
 	}
 
-	// Forward to text input for live search.
+	// Forward everything else to the text input for live search.
 	var cmd tea.Cmd
 	prev := m.input.Value()
 	m.input, cmd = m.input.Update(msg)
@@ -136,15 +142,15 @@ func (m modelSelect) View() string {
 		below = matched - m.cursor - 1
 	}
 
-	// Title + counts: "Opus model  3/20  ↑1 ↓1"
+	// Title line: "Opus model   3/20   ↑1 ↓1"
 	counts := msCount.Render(fmt.Sprintf("%d/%d", matched, total))
 	pos := msCount.Render(fmt.Sprintf("↑%d ↓%d", above, below))
 	sb.WriteString(TitleStyle.Render(m.title) + "  " + counts + "  " + pos + "\n")
 
-	// Search input
+	// Search input.
 	sb.WriteString(m.input.View() + "\n")
 
-	// Model list (height rows)
+	// Model list (up to `height` rows).
 	if matched == 0 {
 		sb.WriteString(msNoMatch.Render("  no matches"))
 	} else {
@@ -157,6 +163,9 @@ func (m modelSelect) View() string {
 			label := item.label
 			if item.owner != "" {
 				label += "  " + msOwner.Render("("+item.owner+")")
+			}
+			if item.pinned {
+				label = msPin.Render("★ ") + label
 			}
 			if i == m.cursor {
 				sb.WriteString(msCursor.Render("> ") + msSelected.Render(label))
@@ -173,25 +182,63 @@ func (m modelSelect) View() string {
 	return sb.String()
 }
 
-// RunModelSelect shows an interactive model selector.
-// extraLabel adds a final option (e.g. "(same as opus)") with empty value.
-// Returns the selected value, or errBack on Esc.
-func RunModelSelect(title string, models []provider.ModelInfo, height int, extraLabel string) (string, error) {
-	items := make([]selectItem, 0, len(models)+1)
+// buildSelectItems produces the ordered list for the selector: pinned models
+// first (deduped, in the given order, only if present in the catalog), then the
+// remaining catalog models in order, then the optional extra entry last.
+func buildSelectItems(models []provider.ModelInfo, extraLabel string, pinned []string) []selectItem {
+	pinnedSet := make(map[string]bool, len(pinned))
+	owner := make(map[string]string, len(models))
 	for _, m := range models {
+		owner[m.ID] = m.OwnedBy
+	}
+
+	items := make([]selectItem, 0, len(models)+1)
+	for _, id := range pinned {
+		if id == "" || pinnedSet[id] {
+			continue
+		}
+		if _, ok := owner[id]; !ok {
+			continue // pinned model not in this catalog — skip
+		}
+		pinnedSet[id] = true
+		items = append(items, selectItem{label: id, owner: owner[id], value: id, pinned: true})
+	}
+	for _, m := range models {
+		if pinnedSet[m.ID] {
+			continue
+		}
 		items = append(items, selectItem{label: m.ID, owner: m.OwnedBy, value: m.ID})
 	}
 	if extraLabel != "" {
 		items = append(items, selectItem{label: extraLabel, value: ""})
 	}
+	return items
+}
 
+// RunModelSelect shows an interactive model selector on a cleared screen.
+//
+//   - extraLabel: optional final entry (e.g. "(default — use sonnet)") with an
+//     empty return value.
+//   - pinned: model IDs already chosen for earlier tiers. They are floated to
+//     the top with a ★ marker, and the cursor starts on the first one — so the
+//     just-picked model is highlighted and immediately re-selectable.
+//
+// Returns the chosen value, or errBack on Esc. Ctrl+C exits the process (130).
+func RunModelSelect(title string, models []provider.ModelInfo, height int, extraLabel string, pinned []string) (string, error) {
+	items := buildSelectItems(models, extraLabel, pinned)
 	hint := "↑↓ navigate · enter select · esc back · type to filter"
+
+	// Clear the screen so each selection is its own clean view.
+	clearScreen()
 	prog := tea.NewProgram(newModelSelect(title, hint, items, height))
 	final, err := prog.Run()
 	if err != nil {
 		return "", err
 	}
 	result := final.(modelSelect)
+	if result.interrupted {
+		os.Exit(130)
+	}
 	if result.aborted || len(result.filtered) == 0 {
 		return "", errBack
 	}

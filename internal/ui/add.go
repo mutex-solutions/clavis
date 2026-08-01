@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
 
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/dinhlongviolin1/clavis/internal/profile"
 	"github.com/dinhlongviolin1/clavis/internal/provider"
@@ -17,83 +17,148 @@ import (
 var errBack = errors.New("go back")
 var errCancel = errors.New("cancel")
 
+// clearScreen clears the terminal and moves cursor to top-left.
+func clearScreen() {
+	fmt.Print("\033[2J\033[H")
+}
+
+// runForm runs a huh form with wizard-consistent key handling:
+//
+//   - Ctrl+C always exits the whole process (130), on every step. huh runs in
+//     raw mode (ISIG off), so a keyboard Ctrl+C never reaches an OS SIGINT
+//     handler — we intercept the 0x03 byte via a bubbletea filter instead.
+//   - Esc aborts the form (returns huh.ErrUserAborted), which callers treat as
+//     "go back". By default huh disables its Back binding on the first field of
+//     a group, so Esc would do nothing on our single-field steps; adding Esc to
+//     the form-level Quit binding makes it work everywhere.
+//
+// Returns huh.ErrUserAborted on Esc, or the form error otherwise.
+func runForm(form *huh.Form) error {
+	km := huh.NewDefaultKeyMap()
+	km.Quit = key.NewBinding(key.WithKeys("esc")) // Ctrl+C handled by the filter below
+	return form.
+		WithKeyMap(km).
+		WithProgramOptions(tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
+			if k, ok := msg.(tea.KeyMsg); ok && k.String() == "ctrl+c" {
+				os.Exit(130)
+			}
+			return msg
+		})).
+		Run()
+}
+
 type AddResult struct {
 	Profile *profile.Profile
 	APIKey  string
 }
 
 func AddProfile() (*AddResult, error) {
-	// Intercept Ctrl+C at the OS level so it ALWAYS exits.
-	// huh treats Esc and Ctrl+C identically — without this,
-	// Ctrl+C would just go back one step instead of exiting.
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT)
-	defer signal.Stop(sigCh)
-	go func() {
-		<-sigCh
-		os.Exit(130)
-	}()
-
+	// Ctrl+C (exit) and Esc (go back) are handled per-form inside runForm and
+	// RunModelSelect — huh runs in raw mode, so an OS-level SIGINT handler here
+	// would never see a keyboard Ctrl+C.
 	var (
-		providerID                                                        string
-		baseURL                                                           string
-		apiKey                                                            string
-		models                                                            []provider.ModelInfo
-		alias                                                             string
-		opusModel, sonnetModel, haikuModel, subagentModel                 string
-		effort                                                            string
-		noThinking                                                        bool
-		compactPct                                                        int
+		providerID                                        string
+		baseURL                                           string
+		apiKey                                            string
+		models                                            []provider.ModelInfo
+		alias                                             string
+		opusModel, sonnetModel, haikuModel, subagentModel string
+		effort                                            string
+		noThinking                                        bool
+		compactPct                                        int
 	)
 
-	// Step 1: Provider
-	step := 0
+	const (
+		stepProvider = iota
+		stepKey
+		stepModels
+		stepAlias
+		stepModelSelect
+		stepAdvanced
+	)
+
+	// isBack reports whether an error means "go to the previous step".
+	isBack := func(err error) bool {
+		return errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted)
+	}
+
+	step := stepProvider
 	for {
+		clearScreen()
 		switch step {
-		case 0:
-			p, url, key, err := wizardProvider()
+		case stepProvider:
+			p, url, err := wizardProvider()
 			if err != nil {
-				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { return nil, errCancel }
+				if isBack(err) {
+					return nil, errCancel
+				} // esc at step 0 = cancel
 				return nil, err
 			}
-			providerID = p
-			baseURL = url
-			apiKey = key
-			step = 1
-		case 1:
+			providerID, baseURL = p, url
+			step = stepKey
+
+		case stepKey:
+			url, key, err := wizardKey(providerID, baseURL)
+			if err != nil {
+				if isBack(err) {
+					step = stepProvider
+					continue
+				}
+				return nil, err
+			}
+			baseURL, apiKey = url, key
+			step = stepModels
+
+		case stepModels:
 			prov, _ := provider.Get(providerID)
 			m, err := wizardModels(baseURL, prov.ModelsEndpoint(), apiKey)
 			if err != nil {
-				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 0; continue }
+				if isBack(err) {
+					step = stepKey
+					continue
+				}
 				return nil, err
 			}
 			models = m
-			step = 2
-		case 2:
+			step = stepAlias
+
+		case stepAlias:
 			a, err := wizardAlias(providerID)
 			if err != nil {
-				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 1; continue }
+				// Skip the non-interactive fetch step when going back — jump
+				// straight to the key input (the previous *visible* step).
+				if isBack(err) {
+					step = stepKey
+					continue
+				}
 				return nil, err
 			}
 			alias = a
-			step = 3
-		case 3:
+			step = stepModelSelect
+
+		case stepModelSelect:
 			o, s, h, sub, err := wizardModelSelect(models)
 			if err != nil {
-				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 2; continue }
+				if isBack(err) {
+					step = stepAlias
+					continue
+				}
 				return nil, err
 			}
 			opusModel, sonnetModel, haikuModel, subagentModel = o, s, h, sub
-			step = 4
-		case 4:
+			step = stepAdvanced
+
+		case stepAdvanced:
 			e, nt, cp, err := wizardAdvanced()
 			if err != nil {
-				if errors.Is(err, errBack) || errors.Is(err, huh.ErrUserAborted) { step = 3; continue }
+				if isBack(err) {
+					step = stepModelSelect
+					continue
+				}
 				return nil, err
 			}
-			effort = e
-			noThinking = nt
-			compactPct = cp
+			effort, noThinking, compactPct = e, nt, cp
+
 			// Build profile and return.
 			is3P := providerID != "anthropic"
 			p := &profile.Profile{
@@ -104,112 +169,153 @@ func AddProfile() (*AddResult, error) {
 				DisableExperimentalBetas:   &is3P,
 				DisableAttribution:         &is3P,
 			}
-			if effort != "" { p.EffortLevel = effort }
-			if noThinking { p.DisableThinking = true }
-			if compactPct > 0 { p.AutoCompactPct = &compactPct }
+			if effort != "" {
+				p.EffortLevel = effort
+			}
+			if noThinking {
+				p.DisableThinking = true
+			}
+			if compactPct > 0 {
+				p.AutoCompactPct = &compactPct
+			}
 			return &AddResult{Profile: p, APIKey: apiKey}, nil
 		}
 	}
 }
 
-func wizardProvider() (providerID, baseURL, apiKey string, err error) {
+// wizardProvider asks the user to pick a provider from the catalog.
+// Esc here aborts the whole wizard (handled by the caller).
+func wizardProvider() (providerID, baseURL string, err error) {
 	providers := provider.All()
 	providerOptions := make([]huh.Option[string], 0, len(providers))
 	for _, p := range providers {
 		providerOptions = append(providerOptions, huh.NewOption(p.DisplayName, p.ID))
 	}
 
-	if err := huh.NewForm(huh.NewGroup(
+	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("Select a provider").
 			Description(DimStyle.Render("esc = cancel")).Options(providerOptions...).Value(&providerID),
-	)).Run(); err != nil {
-		return "", "", "", err
+	))); err != nil {
+		return "", "", err
 	}
 
 	prov, err := provider.Get(providerID)
 	if err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
-	baseURL = prov.BaseURL
+	return providerID, prov.BaseURL, nil
+}
 
-	var keyFields []huh.Field
+// wizardKey collects the base URL (for custom providers) and API key.
+// Esc here returns errBack so the caller returns to provider selection.
+func wizardKey(providerID, baseURL string) (outURL, apiKey string, err error) {
+	prov, err := provider.Get(providerID)
+	if err != nil {
+		return "", "", err
+	}
+	outURL = baseURL
+
+	var fields []huh.Field
 	if providerID == "custom" {
-		keyFields = append(keyFields,
+		fields = append(fields,
 			huh.NewInput().Title("Base URL").Description("Anthropic-compatible endpoint URL").
 				Placeholder("https://api.example.com/anthropic").
 				Validate(func(s string) error {
-					if s == "" { return fmt.Errorf("base URL is required for custom providers") }
+					if s == "" {
+						return fmt.Errorf("base URL is required for custom providers")
+					}
 					return nil
-				}).Value(&baseURL))
+				}).Value(&outURL))
 	}
 
 	if prov.Auth.KeyURL != "" {
 		fmt.Println(DimStyle.Render("  Get an API key at: " + prov.Auth.KeyURL))
 	}
 
-	keyFields = append(keyFields,
+	fields = append(fields,
 		huh.NewInput().Title("API key").EchoMode(huh.EchoModePassword).Placeholder("sk-...").
-			Description(DimStyle.Render("esc = go back")).
+			Description(DimStyle.Render("esc = go back to provider")).
 			Validate(func(s string) error {
-				if s == "" { return fmt.Errorf("API key is required") }
+				if s == "" {
+					return fmt.Errorf("API key is required")
+				}
 				return nil
 			}).Value(&apiKey))
 
-	if err := huh.NewForm(huh.NewGroup(keyFields...)).Run(); err != nil {
-		return "", "", "", errBack
+	if err := runForm(huh.NewForm(huh.NewGroup(fields...))); err != nil {
+		return "", "", errBack
 	}
-	return providerID, baseURL, apiKey, nil
+	return outURL, apiKey, nil
 }
 
 func wizardModels(baseURL, modelsURL, apiKey string) ([]provider.ModelInfo, error) {
 	fmt.Println(DimStyle.Render("  Fetching models..."))
 	models, err := provider.FetchModels(baseURL, modelsURL, apiKey)
 	if err != nil {
+		// The next wizard step clears the screen, so pause on a confirm to let
+		// the user read why the live list is unavailable before manual entry.
 		fmt.Println(Warn(fmt.Sprintf("Could not fetch models: %v", err)))
-		fmt.Println(DimStyle.Render("  Falling back to manual model entry."))
+		var proceed bool
+		if e := runForm(huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().Title("Enter model IDs manually?").
+				Description("The provider's model list couldn't be fetched. esc = go back to the key.").
+				Affirmative("Yes, type them").Negative("Go back").Value(&proceed),
+		))); e != nil || !proceed {
+			return nil, errBack
+		}
 		return nil, nil
 	}
-	fmt.Println(Success(fmt.Sprintf("Found %d models — esc to go back, enter to continue", len(models))))
 	return models, nil
 }
 
 func wizardAlias(providerID string) (string, error) {
 	autoName := profile.NextAlias(providerID)
 	var alias string
-	if err := huh.NewForm(huh.NewGroup(
+	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewInput().Title("Profile alias (optional)").
 			Description("Skip for auto-name: " + CommandStyle.Render(autoName) + "  " + DimStyle.Render("esc = go back")).
 			Placeholder(autoName).
 			Validate(func(s string) error {
-				if s == "" { return nil }
-				if err := profile.ValidName(s); err != nil { return err }
-				if profile.Exists(s) { return fmt.Errorf("%q already exists", s) }
+				if s == "" {
+					return nil
+				}
+				if err := profile.ValidName(s); err != nil {
+					return err
+				}
+				if profile.Exists(s) {
+					return fmt.Errorf("%q already exists", s)
+				}
 				return nil
 			}).Value(&alias),
-	)).Run(); err != nil {
+	))); err != nil {
 		return "", errBack
 	}
-	if alias == "" { alias = autoName }
+	if alias == "" {
+		alias = autoName
+	}
 	return alias, nil
 }
 
 func wizardModelSelect(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
 	if len(models) == 0 {
-		o, s, h, sub, e := selectTiersFreeText(); return o, s, h, sub, e
+		o, s, h, sub, e := selectTiersFreeText()
+		return o, s, h, sub, e
 	}
 
 	var simple bool
-	if err := huh.NewForm(huh.NewGroup(
+	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Simple model setup?").
 			Description("One model for all tiers. esc = go back.").
 			Affirmative("Yes, one model").Negative("No, per-tier").Value(&simple),
-	)).Run(); err != nil {
+	))); err != nil {
 		return "", "", "", "", errBack
 	}
 
 	if simple {
 		m, err := selectOneModel(models)
-		if err != nil { return "", "", "", "", err }
+		if err != nil {
+			return "", "", "", "", err
+		}
 		return m, m, m, m, nil
 	}
 	return selectTiersDetailed(models)
@@ -217,20 +323,20 @@ func wizardModelSelect(models []provider.ModelInfo) (opus, sonnet, haiku, subage
 
 func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error) {
 	var show bool
-	if err := huh.NewForm(huh.NewGroup(
+	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Advanced configuration?").
-			Description("Effort, thinking, compaction. esc = skip and use defaults.").
+			Description("Effort, thinking, compaction. esc = go back.").
 			Affirmative("Yes, customize").Negative("No, use defaults").Value(&show),
-	)).Run(); err != nil {
-		return "", false, 0, nil // esc = skip advanced
+	))); err != nil {
+		return "", false, 0, errBack // esc = back to model selection
 	}
 	if !show {
-		return "", false, 0, nil
+		return "", false, 0, nil // "No, use defaults" → proceed with defaults
 	}
 
 	effort = "auto"
 	var compactStr string
-	if err := huh.NewForm(huh.NewGroup(
+	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("Effort level").
 			Description(DimStyle.Render("esc = go back")).
 			Options(
@@ -248,50 +354,67 @@ func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error
 			Description("Lower = compact sooner. Default: 80%. Empty = skip.").
 			Placeholder("80").
 			Validate(func(s string) error {
-				if s == "" { return nil }
+				if s == "" {
+					return nil
+				}
 				v, err := strconv.Atoi(s)
-				if err != nil || v < 1 || v > 100 { return fmt.Errorf("must be 1–100") }
+				if err != nil || v < 1 || v > 100 {
+					return fmt.Errorf("must be 1–100")
+				}
 				return nil
 			}).Value(&compactStr),
-	)).Run(); err != nil {
+	))); err != nil {
 		return "", false, 0, errBack
 	}
-	if compactStr != "" { compactPct, _ = strconv.Atoi(compactStr) }
+	if compactStr != "" {
+		compactPct, _ = strconv.Atoi(compactStr)
+	}
 	return effort, noThinking, compactPct, nil
 }
 
 func selectOneModel(models []provider.ModelInfo) (string, error) {
-	return RunModelSelect("Select model", models, 5, "")
+	return RunModelSelect("Select model", models, 5, "", nil)
 }
 
 func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
-	opus, err = RunModelSelect("Opus model (hard reasoning)", models, 5, "")
-	if err != nil { return }
+	// Each tier floats the already-chosen models to the top (★) with the
+	// most recent first, so the natural default is highlighted and one Enter
+	// away — while any model is still reachable by scrolling or typing.
+	opus, err = RunModelSelect("Opus model (hard reasoning)", models, 5, "", nil)
+	if err != nil {
+		return
+	}
 
-	sonnet, err = RunModelSelect("Sonnet model (daily driver)", models, 5, "")
-	if err != nil { return }
+	sonnet, err = RunModelSelect("Sonnet model (daily driver)", models, 5, "", []string{opus})
+	if err != nil {
+		return
+	}
 
-	haiku, err = RunModelSelect("Haiku model (fast/cheap)", models, 5, "(default — use sonnet)")
-	if err != nil { return }
+	haiku, err = RunModelSelect("Haiku model (fast/cheap)", models, 5, "(default — use sonnet)", []string{sonnet, opus})
+	if err != nil {
+		return
+	}
 
-	subagent, err = RunModelSelect("Subagent model", models, 5, "(default — use sonnet)")
-	if err != nil { return }
+	subagent, err = RunModelSelect("Subagent model", models, 5, "(default — use sonnet)", []string{sonnet, opus, haiku})
+	if err != nil {
+		return
+	}
 
 	return opus, sonnet, haiku, subagent, nil
 }
 
 func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
 	var simple bool
-	if huh.NewForm(huh.NewGroup(
+	if runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Simple model setup?").
 			Description("One model for all tiers.").
 			Affirmative("Yes, one model").Negative("No, per-tier").Value(&simple),
-	)).Run() != nil {
+	))) != nil {
 		return "", "", "", "", errBack
 	}
 
 	if simple {
-		if huh.NewForm(huh.NewGroup(
+		if runForm(huh.NewForm(huh.NewGroup(
 			huh.NewInput().Title("Model ID").Placeholder("model-id").
 				Validate(func(s string) error {
 					if s == "" {
@@ -299,13 +422,13 @@ func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
 					}
 					return nil
 				}).Value(&opus),
-		)).Run() != nil {
+		))) != nil {
 			return "", "", "", "", errBack
 		}
 		return opus, opus, opus, opus, nil
 	}
 
-	if huh.NewForm(huh.NewGroup(
+	if runForm(huh.NewForm(huh.NewGroup(
 		huh.NewInput().Title("Opus model ID — PRIMARY").Placeholder("model-id").
 			Validate(func(s string) error {
 				if s == "" {
@@ -316,7 +439,7 @@ func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
 		huh.NewInput().Title("Sonnet model ID — optional").Placeholder("same as opus").Value(&sonnet),
 		huh.NewInput().Title("Haiku model ID — optional").Placeholder("same as opus").Value(&haiku),
 		huh.NewInput().Title("Subagent model ID — optional").Placeholder("same as opus").Value(&subagent),
-	)).Run() != nil {
+	))) != nil {
 		return "", "", "", "", errBack
 	}
 	return opus, sonnet, haiku, subagent, nil

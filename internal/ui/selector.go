@@ -41,12 +41,13 @@ func SelectProfile(profiles []*profile.Profile, lastUsed string) (*SelectorResul
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Pick a profile").
+				Description(DimStyle.Render("esc = quit")).
 				Options(options...).
 				Value(&selected),
 		),
 	)
 
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		return &SelectorResult{Action: "quit"}, nil
 	}
 
@@ -76,7 +77,7 @@ func ConfirmDelete(name string) bool {
 				Value(&confirm),
 		),
 	)
-	if err := form.Run(); err != nil {
+	if err := runForm(form); err != nil {
 		return false
 	}
 	return confirm
