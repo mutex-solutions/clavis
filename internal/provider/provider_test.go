@@ -4,8 +4,8 @@ import "testing"
 
 func TestCatalogLoads(t *testing.T) {
 	providers := All()
-	if len(providers) != 8 {
-		t.Fatalf("All() returned %d providers, want 8", len(providers))
+	if len(providers) != 7 {
+		t.Fatalf("All() returned %d providers, want 7", len(providers))
 	}
 }
 

@@ -69,15 +69,5 @@
       "keyUrl": "",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
     }
-  },
-  {
-    "id": "maas",
-    "displayName": "Alibaba MaaS (token-plan)",
-    "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/apps/anthropic",
-    "auth": {
-      "needsKey": true,
-      "keyUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/",
-      "envVar": "ANTHROPIC_AUTH_TOKEN"
-    }
   }
 ]
