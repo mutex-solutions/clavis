@@ -24,7 +24,7 @@ func AddProfile() (*AddResult, error) {
 
 	providerOptions := make([]huh.Option[string], 0, len(providers))
 	for _, p := range providers {
-		label := fmt.Sprintf("%-28s [%s]", p.DisplayName, p.Tier)
+		label := p.DisplayName
 		providerOptions = append(providerOptions, huh.NewOption(label, p.ID))
 	}
 
@@ -105,8 +105,19 @@ func AddProfile() (*AddResult, error) {
 		return nil, err
 	}
 
-	// Step 3: Model tier selection
-	sonnetModel, opusModel, haikuModel, subagentModel, err := selectTiers(&prov)
+	// Step 3: Fetch models live from the provider
+	fmt.Println(DimStyle.Render("  Fetching models from " + prov.DisplayName + "..."))
+	models, err := provider.FetchModels(baseURL, apiKey)
+	if err != nil {
+		fmt.Println(Warn(fmt.Sprintf("Could not fetch models: %v", err)))
+		fmt.Println(DimStyle.Render("  Falling back to manual model entry."))
+		models = nil
+	} else {
+		fmt.Println(Success(fmt.Sprintf("Found %d models", len(models))))
+	}
+
+	// Step 4: Model tier selection
+	sonnetModel, opusModel, haikuModel, subagentModel, err := selectTiers(models)
 	if err != nil {
 		return nil, err
 	}
@@ -171,22 +182,18 @@ func AddProfile() (*AddResult, error) {
 	return &AddResult{Profile: p, APIKey: apiKey}, nil
 }
 
-// selectTiers runs the dynamic model tier selection.
-func selectTiers(prov *provider.Provider) (sonnet, opus, haiku, subagent string, err error) {
-	if len(prov.Models) == 0 {
-		// Custom provider with no catalog models — free text input
+// selectTiers runs dynamic model tier selection from live-fetched models.
+func selectTiers(models []provider.ModelInfo) (sonnet, opus, haiku, subagent string, err error) {
+	if len(models) == 0 {
 		return selectTiersFreeText()
 	}
 
-	modelOptions := func(recommended string) []huh.Option[string] {
-		opts := make([]huh.Option[string], 0, len(prov.Models)+1)
-		for _, m := range prov.Models {
+	modelOptions := func() []huh.Option[string] {
+		opts := make([]huh.Option[string], 0, len(models)+1)
+		for _, m := range models {
 			label := m.ID
-			if m.Note != "" {
-				label += "  " + DimStyle.Render(m.Note)
-			}
-			if m.ID == recommended {
-				label += " " + TierStyle.Render("[recommended]")
+			if m.OwnedBy != "" {
+				label += "  " + DimStyle.Render("("+m.OwnedBy+")")
 			}
 			opts = append(opts, huh.NewOption(label, m.ID))
 		}
@@ -194,25 +201,20 @@ func selectTiers(prov *provider.Provider) (sonnet, opus, haiku, subagent string,
 	}
 
 	sameAsSonnet := "(same as sonnet)"
+	defaultModel := models[0].ID // first model is default for all tiers
 
-	// Sonnet — required
-	sonnetDefault := prov.DefaultForTier("sonnet")
-	if sonnetDefault == "" && len(prov.Models) > 0 {
-		sonnetDefault = prov.Models[0].ID
-	}
-	sonnet = sonnetDefault
+	sonnet = defaultModel
 
 	fields := []huh.Field{
 		huh.NewSelect[string]().
 			Title("Sonnet model (daily driver) — REQUIRED").
-			Options(modelOptions(sonnetDefault)...).
+			Options(modelOptions()...).
 			Value(&sonnet),
 	}
 
 	// Opus — optional
-	opusDefault := prov.DefaultForTier("opus")
-	opus = opusDefault
-	opusOpts := modelOptions(opusDefault)
+	opus = defaultModel
+	opusOpts := modelOptions()
 	opusOpts = append(opusOpts, huh.NewOption(sameAsSonnet, ""))
 	fields = append(fields,
 		huh.NewSelect[string]().
@@ -222,9 +224,8 @@ func selectTiers(prov *provider.Provider) (sonnet, opus, haiku, subagent string,
 	)
 
 	// Haiku — optional
-	haikuDefault := prov.DefaultForTier("haiku")
-	haiku = haikuDefault
-	haikuOpts := modelOptions(haikuDefault)
+	haiku = defaultModel
+	haikuOpts := modelOptions()
 	haikuOpts = append(haikuOpts, huh.NewOption(sameAsSonnet, ""))
 	fields = append(fields,
 		huh.NewSelect[string]().
@@ -234,9 +235,8 @@ func selectTiers(prov *provider.Provider) (sonnet, opus, haiku, subagent string,
 	)
 
 	// Subagent — optional
-	subagentDefault := prov.DefaultForTier("subagent")
-	subagent = subagentDefault
-	subOpts := modelOptions(subagentDefault)
+	subagent = defaultModel
+	subOpts := modelOptions()
 	subOpts = append(subOpts, huh.NewOption(sameAsSonnet, ""))
 	fields = append(fields,
 		huh.NewSelect[string]().
@@ -253,7 +253,7 @@ func selectTiers(prov *provider.Provider) (sonnet, opus, haiku, subagent string,
 	return sonnet, opus, haiku, subagent, nil
 }
 
-// selectTiersFreeText handles custom providers with no catalog models.
+// selectTiersFreeText handles the fallback when no models were fetched.
 func selectTiersFreeText() (sonnet, opus, haiku, subagent string, err error) {
 	form := huh.NewForm(
 		huh.NewGroup(

@@ -11,13 +11,10 @@ var catalogFS embed.FS
 
 // Provider is a known Anthropic-compatible API endpoint.
 type Provider struct {
-	ID           string          `json:"id"`
-	DisplayName  string          `json:"displayName"`
-	BaseURL      string          `json:"baseUrl"`
-	Tier         string          `json:"tier"`
-	Auth         AuthConfig      `json:"auth"`
-	Models       []ProviderModel `json:"models"`
-	LastVerified string          `json:"lastVerified"`
+	ID          string     `json:"id"`
+	DisplayName string     `json:"displayName"`
+	BaseURL     string     `json:"baseUrl"`
+	Auth        AuthConfig `json:"auth"`
 }
 
 // AuthConfig describes how to authenticate with a provider.
@@ -27,13 +24,12 @@ type AuthConfig struct {
 	EnvVar   string `json:"envVar"`
 }
 
-// ProviderModel is a model available from a provider.
-type ProviderModel struct {
-	ID        string   `json:"id"`
-	Free      bool     `json:"free"`
-	Context   int      `json:"context"`
-	Note      string   `json:"note"`
-	TierHints []string `json:"tierHints"`
+// ModelInfo is returned by the /v1/models endpoint.
+type ModelInfo struct {
+	ID      string `json:"id"`
+	Object  string `json:"object,omitempty"`
+	OwnedBy string `json:"owned_by,omitempty"`
+	Created int64  `json:"created,omitempty"`
 }
 
 var catalog []Provider
@@ -63,27 +59,4 @@ func Get(id string) (Provider, error) {
 		}
 	}
 	return Provider{}, fmt.Errorf("provider %q not found", id)
-}
-
-// ModelsForTier returns models whose tierHints include the given tier.
-func (p *Provider) ModelsForTier(tier string) []ProviderModel {
-	var out []ProviderModel
-	for _, m := range p.Models {
-		for _, hint := range m.TierHints {
-			if hint == tier {
-				out = append(out, m)
-				break
-			}
-		}
-	}
-	return out
-}
-
-// DefaultForTier returns the first model recommended for a tier, or empty string.
-func (p *Provider) DefaultForTier(tier string) string {
-	models := p.ModelsForTier(tier)
-	if len(models) > 0 {
-		return models[0].ID
-	}
-	return ""
 }

@@ -3,112 +3,70 @@
     "id": "anthropic",
     "displayName": "Anthropic (official)",
     "baseUrl": "https://api.anthropic.com",
-    "tier": "paid",
     "auth": {
       "needsKey": true,
       "keyUrl": "https://console.anthropic.com/settings/keys",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    },
-    "models": [
-      { "id": "claude-sonnet-5", "free": false, "context": 200000, "note": "Balanced daily driver", "tierHints": ["sonnet"] },
-      { "id": "claude-opus-5", "free": false, "context": 200000, "note": "Hardest reasoning", "tierHints": ["opus"] },
-      { "id": "claude-haiku-4", "free": false, "context": 200000, "note": "Fast and cheap", "tierHints": ["haiku", "subagent"] }
-    ],
-    "lastVerified": "2026-08-01"
+    }
   },
   {
     "id": "deepseek",
     "displayName": "DeepSeek",
     "baseUrl": "https://api.deepseek.com/anthropic",
-    "tier": "paid",
     "auth": {
       "needsKey": true,
       "keyUrl": "https://platform.deepseek.com/api_keys",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    },
-    "models": [
-      { "id": "deepseek-v4-pro", "free": false, "context": 128000, "note": "Heavy coding, deep reasoning", "tierHints": ["opus", "sonnet"] },
-      { "id": "deepseek-v4-flash", "free": false, "context": 128000, "note": "Fast background tasks", "tierHints": ["haiku", "subagent"] }
-    ],
-    "lastVerified": "2026-08-01"
+    }
   },
   {
     "id": "zai",
     "displayName": "Z.ai (Zhipu GLM)",
     "baseUrl": "https://api.z.ai/api/anthropic",
-    "tier": "free",
     "auth": {
       "needsKey": true,
       "keyUrl": "https://z.ai/manage-apikey/apikey-list",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    },
-    "models": [
-      { "id": "glm-4.7-flash", "free": true, "context": 203000, "note": "MoE 30B, fast coding", "tierHints": ["sonnet", "haiku", "subagent"] },
-      { "id": "glm-5.1", "free": false, "context": 200000, "note": "744B MoE, long autonomous tasks", "tierHints": ["opus", "sonnet"] },
-      { "id": "glm-4.7", "free": false, "context": 200000, "note": "Coding plan", "tierHints": ["sonnet"] }
-    ],
-    "lastVerified": "2026-08-01"
+    }
   },
   {
     "id": "minimax",
     "displayName": "MiniMax",
     "baseUrl": "https://api.minimax.io/anthropic",
-    "tier": "trial",
     "auth": {
       "needsKey": true,
       "keyUrl": "https://platform.minimaxi.com/user-center/basic-information/interface-key",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    },
-    "models": [
-      { "id": "MiniMax-M2.7", "free": true, "context": 204800, "note": "60 tps, Opus-level", "tierHints": ["opus", "sonnet"] },
-      { "id": "MiniMax-M2.7-highspeed", "free": true, "context": 204800, "note": "100 tps highspeed", "tierHints": ["haiku", "subagent"] },
-      { "id": "MiniMax-M2.5", "free": true, "context": 204800, "note": "Previous gen", "tierHints": ["sonnet"] }
-    ],
-    "lastVerified": "2026-08-01"
+    }
   },
   {
     "id": "openrouter",
     "displayName": "OpenRouter",
     "baseUrl": "https://openrouter.ai/api",
-    "tier": "free",
     "auth": {
       "needsKey": true,
       "keyUrl": "https://openrouter.ai/keys",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    },
-    "models": [
-      { "id": "qwen/qwen3-coder:free", "free": true, "context": 262000, "note": "Strongest free coder — 480B", "tierHints": ["opus", "sonnet"] },
-      { "id": "z-ai/glm-4.5-air:free", "free": true, "context": 131000, "note": "Light GLM, fast", "tierHints": ["haiku", "subagent"] }
-    ],
-    "lastVerified": "2026-08-01"
+    }
   },
   {
     "id": "moonshot",
     "displayName": "Moonshot Kimi",
     "baseUrl": "https://api.moonshot.ai/anthropic",
-    "tier": "paid",
     "auth": {
       "needsKey": true,
       "keyUrl": "https://platform.moonshot.ai/console/api-keys",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    },
-    "models": [
-      { "id": "kimi-k2.6", "free": false, "context": 200000, "note": "1T MoE, multi-agent", "tierHints": ["opus", "sonnet"] },
-      { "id": "kimi-k2.5", "free": false, "context": 200000, "note": "1T MoE, long context", "tierHints": ["sonnet"] }
-    ],
-    "lastVerified": "2026-08-01"
+    }
   },
   {
     "id": "custom",
     "displayName": "Custom provider",
     "baseUrl": "",
-    "tier": "custom",
     "auth": {
       "needsKey": true,
       "keyUrl": "",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    },
-    "models": [],
-    "lastVerified": ""
+    }
   }
 ]

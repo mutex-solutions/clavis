@@ -235,30 +235,16 @@ func runRemove(args []string) {
 // runProviders prints the built-in provider catalog.
 func runProviders() {
 	fmt.Println()
-	fmt.Printf("  %-14s %-30s %-8s %s\n", "ID", "NAME", "TIER", "BASE URL")
+	fmt.Printf("  %-14s %-30s %s\n", "ID", "NAME", "BASE URL")
 	for _, p := range provider.All() {
 		url := p.BaseURL
 		if url == "" {
 			url = "(user-provided)"
 		}
-		fmt.Printf("  %-14s %-30s %-8s %s\n", p.ID, p.DisplayName, p.Tier, url)
+		fmt.Printf("  %-14s %-30s %s\n", p.ID, p.DisplayName, url)
 	}
 	fmt.Println()
-
-	fmt.Println(ui.DimStyle.Render("  Models:"))
-	for _, p := range provider.All() {
-		if len(p.Models) == 0 {
-			continue
-		}
-		for _, m := range p.Models {
-			tiers := strings.Join(m.TierHints, ",")
-			free := ""
-			if m.Free {
-				free = " [free]"
-			}
-			fmt.Printf("    %-12s %-28s %-18s %d ctx%s\n", p.ID, m.ID, tiers, m.Context, free)
-		}
-	}
+	fmt.Println(ui.DimStyle.Render("  Models are fetched live from each provider during clavis add."))
 	fmt.Println()
 }
 
