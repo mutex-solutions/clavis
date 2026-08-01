@@ -198,8 +198,6 @@ func wizardModelSelect(models []provider.ModelInfo) (opus, sonnet, haiku, subage
 		o, s, h, sub, e := selectTiersFreeText(); return o, s, h, sub, e
 	}
 
-	filtered := models
-
 	var simple bool
 	if err := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Simple model setup?").
@@ -210,10 +208,11 @@ func wizardModelSelect(models []provider.ModelInfo) (opus, sonnet, haiku, subage
 	}
 
 	if simple {
-		m := selectOneModel(filtered)
+		m, err := selectOneModel(models)
+		if err != nil { return "", "", "", "", err }
 		return m, m, m, m, nil
 	}
-	o, s, h, sub, err := selectTiersDetailed(filtered); return o, s, h, sub, err
+	return selectTiersDetailed(models)
 }
 
 func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error) {
@@ -261,62 +260,22 @@ func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error
 	return effort, noThinking, compactPct, nil
 }
 
-func selectOneModel(models []provider.ModelInfo) string {
-	opts := make([]huh.Option[string], len(models))
-	for i, m := range models {
-		l := m.ID
-		if m.OwnedBy != "" { l += "  " + DimStyle.Render("("+m.OwnedBy+")") }
-		opts[i] = huh.NewOption(l, m.ID)
-	}
-	m := models[0].ID
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Height(5).Title("Select model").
-			Description(DimStyle.Render("/ = search, ↑↓ = navigate, esc = go back")).
-			Options(opts...).Value(&m),
-	))
-	if err := form.Run(); err != nil { return m } // esc = keep default
-	return m
+func selectOneModel(models []provider.ModelInfo) (string, error) {
+	return RunModelSelect("Select model", models, 5, "")
 }
 
 func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
-	opts := func() []huh.Option[string] {
-		out := make([]huh.Option[string], len(models))
-		for i, m := range models {
-			l := m.ID
-			if m.OwnedBy != "" { l += "  " + DimStyle.Render("("+m.OwnedBy+")") }
-			out[i] = huh.NewOption(l, m.ID)
-		}
-		return out
-	}
-	defaultModel := models[0].ID
-	same := "(same as opus)"
-	fh := DimStyle.Render("/ = search, ↑↓ = navigate, esc = go back")
+	opus, err = RunModelSelect("Opus model (hard reasoning)", models, 5, "")
+	if err != nil { return }
 
-	opus = defaultModel
-	sonnet, haiku, subagent = defaultModel, defaultModel, defaultModel
+	sonnet, err = RunModelSelect("Sonnet model (daily driver)", models, 5, "")
+	if err != nil { return }
 
-	if huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Height(5).Title("Opus model (hard reasoning)").
-			Description(fh).Options(opts()...).Value(&opus),
-	)).Run() != nil { return }
+	haiku, err = RunModelSelect("Haiku model (fast/cheap)", models, 5, "(default — use sonnet)")
+	if err != nil { return }
 
-	sOpts := opts(); sOpts = append(sOpts, huh.NewOption(same, ""))
-	if huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Height(5).Title("Sonnet model (daily driver)").
-			Description("Same as opus by default. " + fh).Options(sOpts...).Value(&sonnet),
-	)).Run() != nil { return }
-
-	hOpts := opts(); hOpts = append(hOpts, huh.NewOption(same, ""))
-	if huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Height(5).Title("Haiku model (fast/cheap)").
-			Description("Same as opus by default").Options(hOpts...).Value(&haiku),
-	)).Run() != nil { return }
-
-	subOpts := opts(); subOpts = append(subOpts, huh.NewOption(same, ""))
-	if huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Height(5).Title("Subagent model").
-			Description("Same as opus by default").Options(subOpts...).Value(&subagent),
-	)).Run() != nil { return }
+	subagent, err = RunModelSelect("Subagent model", models, 5, "(default — use sonnet)")
+	if err != nil { return }
 
 	return opus, sonnet, haiku, subagent, nil
 }
