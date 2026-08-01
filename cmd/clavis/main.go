@@ -44,10 +44,13 @@ func main() {
 		if err := profile.ValidName(args[0]); err == nil && profile.Exists(args[0]) {
 			runQuickLaunch(args[0], args[1:])
 		} else if err == nil {
-			fmt.Fprintf(os.Stderr, "unknown command %q — run clavis --help\n", args[0])
+			fmt.Fprintf(os.Stderr, "unknown command %q — try %s or %s\n",
+				args[0],
+				ui.CommandStyle.Render("clavis --help"),
+				ui.CommandStyle.Render("clavis list"))
 			os.Exit(1)
 		} else {
-			fmt.Fprintf(os.Stderr, "invalid profile name: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(1)
 		}
 	}
@@ -61,8 +64,8 @@ Usage:
   clavis <profile> [args...]  Quick launch a profile
   clavis start [args...]      Open profile selector
   clavis add                  Create a new profile
-  clavis list                 List all profiles
-  clavis remove <name>        Delete a profile
+  clavis list, ls             List all profiles
+  clavis remove, rm <name>    Delete a profile
   clavis providers            Show provider catalog
   clavis validate <name>      Ping a profile's provider
   clavis version              Print version
@@ -79,12 +82,14 @@ Examples:
 func runSelector(extraArgs []string) {
 	profiles, err := profile.List()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("failed to list profiles: %v", err)))
+		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Failed to list profiles: %v", err)))
 		os.Exit(1)
 	}
 
 	if len(profiles) == 0 {
-		fmt.Println(ui.DimStyle.Render("No profiles yet. Let's create one."))
+		fmt.Print(ui.DimStyle.Render("No profiles yet. ") +
+			"Create one now with " + ui.CommandStyle.Render("clavis add") +
+			", or run " + ui.CommandStyle.Render("clavis providers") + " to see supported backends.")
 		runAdd()
 		return
 	}
@@ -150,19 +155,20 @@ func runAdd() {
 	fmt.Print(ui.DimStyle.Render("  Validating key..."))
 	if err := provider.Ping(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel); err != nil {
 		fmt.Print("\r" + strings.Repeat(" ", 60) + "\r")
-		fmt.Println(ui.Error(fmt.Sprintf("key validation failed: %v", err)))
-		fmt.Println(ui.DimStyle.Render("  Saving profile anyway. Edit ~/.clavis/profiles/<name>/.env to fix the key."))
+		fmt.Println(ui.Warn(fmt.Sprintf("Key validation failed: %v", err)))
+		fmt.Println(ui.NextStep("Edit the key, then retry:", "clavis validate "+result.Profile.Name))
 	} else {
 		fmt.Print("\r" + strings.Repeat(" ", 60) + "\r")
 		fmt.Println(ui.Success("Key valid"))
 	}
 
 	if err := profile.Save(result.Profile, result.APIKey); err != nil {
-		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("failed to save: %v", err)))
+		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Failed to save profile: %v", err)))
 		os.Exit(1)
 	}
 
 	fmt.Println(ui.Success(fmt.Sprintf("Profile %q saved", result.Profile.Name)))
+	fmt.Println(ui.NextStep("Launch it with:", "clavis "+result.Profile.Name))
 }
 
 // runList prints all profiles as a styled table.
@@ -204,13 +210,13 @@ func runList() {
 // runRemove deletes a profile.
 func runRemove(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: clavis remove <name>")
+		fmt.Fprintln(os.Stderr, "Usage: clavis remove <name>")
 		os.Exit(1)
 	}
 
 	name := args[0]
 	if !profile.Exists(name) {
-		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("profile %q not found", name)))
+		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Profile %q not found. Run %s to see all profiles.", name, ui.CommandStyle.Render("clavis list"))))
 		os.Exit(1)
 	}
 

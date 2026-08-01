@@ -12,7 +12,7 @@ import (
 // runValidate pings a profile's provider.
 func runValidate(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: clavis validate <name>")
+		fmt.Fprintln(os.Stderr, "Usage: clavis validate <name>")
 		os.Exit(1)
 	}
 

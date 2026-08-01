@@ -18,7 +18,7 @@ import (
 // Returns claude's exit code.
 func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) {
 	if err := p.Validate(); err != nil {
-		return 1, fmt.Errorf("invalid profile: %w", err)
+		return 1, fmt.Errorf("Invalid profile: %w", err)
 	}
 
 	env, err := buildEnv(p, apiKey)
@@ -39,7 +39,7 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 	// Find claude binary
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
-		return 1, fmt.Errorf("claude binary not found in PATH — install Claude Code first")
+		return 1, fmt.Errorf("Claude not found — install with: npm install -g @anthropic-ai/claude-code")
 	}
 
 	cmd := exec.Command(claudePath, args...)

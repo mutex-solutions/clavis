@@ -30,7 +30,7 @@ all your providers.
 
 ## Features
 
-- **5-tier model mapping** — map provider models to Claude Code's opus/sonnet/haiku/subagent tiers
+- **4-tier model mapping** — map provider models to Claude Code's opus/sonnet/haiku/subagent tiers
 - **Secure key storage** — keys in `.env` files (chmod 0600), never in metadata
 - **Session isolation** — each profile gets its own `CLAUDE_CONFIG_DIR`
 - **Token management** — compaction control, effort level, output limits, timeouts
