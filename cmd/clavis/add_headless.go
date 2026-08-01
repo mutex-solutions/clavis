@@ -12,55 +12,85 @@ import (
 )
 
 func runAddOrHeadless(args []string) {
-	if hasAddFlags(args) {
-		runAddHeadless(args)
-		return
-	}
-	runAdd()
-}
-
-func hasAddFlags(args []string) bool {
-	for _, a := range args {
-		if strings.HasPrefix(a, "-") {
-			return true
-		}
-	}
-	return false
-}
-
-func runAddHeadless(args []string) {
-	fs := flag.NewFlagSet("add", flag.ExitOnError)
+	// Use flag.FlagSet to properly detect headless mode.
+	// If user passes -h, show help for headless flags.
+	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	providerID := fs.String("provider", "", "Provider ID (deepseek, anthropic, zai, etc.)")
-	key := fs.String("key", "", "API key for the provider")
-	baseURL := fs.String("url", "", "Base URL (required for custom providers)")
+	model := fs.String("model", "", "Primary model (daily driver) — required")
+	reasoningModel := fs.String("reasoning-model", "", "Hard-reasoning model (optional)")
+	fastModel := fs.String("fast-model", "", "Fast/cheap model (optional)")
+	subagentModel := fs.String("subagent-model", "", "Subagent model (optional)")
+	baseURL := fs.String("base-url", "", "Base URL (required for custom providers)")
 	alias := fs.String("alias", "", "Profile name (auto-generated if empty)")
-	sonnet := fs.String("sonnet", "", "Sonnet model ID (required)")
-	opus := fs.String("opus", "", "Opus model ID (optional)")
-	haiku := fs.String("haiku", "", "Haiku model ID (optional)")
-	subagent := fs.String("subagent", "", "Subagent model ID (optional)")
+	key := fs.String("key", "", "API key (insecure — prefer --key-file)")
+	keyFile := fs.String("key-file", "", "Read API key from file (secure)")
 	contextWindow := fs.Int("context-window", 0, "Context window size in tokens")
 	compactPct := fs.Int("compact-pct", 0, "Auto-compact percentage threshold")
 	maxTokens := fs.Int("max-tokens", 0, "Max output tokens per request")
 	effort := fs.String("effort", "", "Effort level (low|medium|high|xhigh|max|auto)")
-	timeoutMs := fs.Int("timeout", 0, "API timeout in milliseconds")
+	timeoutMs := fs.Int("timeout", 0, "API timeout in ms (600000 default)")
 	noThinking := fs.Bool("no-thinking", false, "Disable thinking tokens")
-	noTraffic := fs.Bool("no-traffic", true, "Disable nonessential traffic")
-	noBetas := fs.Bool("no-betas", true, "Disable experimental betas")
 	minimal := fs.Bool("bare", false, "Minimal mode (--bare)")
-	noAttr := fs.Bool("no-attribution", false, "Disable attribution header")
-	customHeaders := fs.String("headers", "", "Custom headers (key:val\\nkey2:val2)")
-	fs.Parse(args)
+	customHeaders := fs.String("headers", "", "Custom headers (key: val\\nkey2: val2)")
+
+	// Also support positional args for old --sonnet/--opus/--haiku compat
+	sonnetCompat := fs.String("sonnet", "", "")
+	opusCompat := fs.String("opus", "", "")
+	haikuCompat := fs.String("haiku", "", "")
+	subagentCompat := fs.String("subagent", "", "")
+	urlCompat := fs.String("url", "", "")
+
+	err := fs.Parse(args)
+
+	// If parsing failed and no flags were given, run interactive wizard.
+	if err != nil && !hasAnyFlag(args) {
+		runAdd()
+		return
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	// No flags given at all → interactive wizard.
+	if !hasAnyFlag(args) {
+		runAdd()
+		return
+	}
+
+	// Resolve model: new flag names take precedence, old ones as fallback.
+	resolve := func(primary, compat string) string {
+		if primary != "" {
+			return primary
+		}
+		return compat
+	}
+	sonnet := resolve(*model, *sonnetCompat)
+	opus := resolve(*reasoningModel, *opusCompat)
+	haiku := resolve(*fastModel, *haikuCompat)
+	subagent := resolve(*subagentModel, *subagentCompat)
+	url := resolve(*baseURL, *urlCompat)
 
 	if *providerID == "" {
 		fmt.Fprintln(os.Stderr, ui.Error("--provider is required"))
 		os.Exit(1)
 	}
-	if *key == "" {
-		fmt.Fprintln(os.Stderr, ui.Error("--key is required"))
+	if sonnet == "" {
+		fmt.Fprintln(os.Stderr, ui.Error("--model is required"))
 		os.Exit(1)
 	}
-	if *sonnet == "" {
-		fmt.Fprintln(os.Stderr, ui.Error("--sonnet is required"))
+
+	// Resolve API key
+	apiKey := *key
+	if *keyFile != "" {
+		data, err := os.ReadFile(*keyFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Cannot read key file: %v", err)))
+			os.Exit(1)
+		}
+		apiKey = strings.TrimSpace(string(data))
+	}
+	if apiKey == "" {
+		fmt.Fprintln(os.Stderr, ui.Error("--key or --key-file is required"))
 		os.Exit(1)
 	}
 
@@ -70,12 +100,11 @@ func runAddHeadless(args []string) {
 		os.Exit(1)
 	}
 
-	url := prov.BaseURL
-	if *baseURL != "" {
-		url = *baseURL
+	if url == "" {
+		url = prov.BaseURL
 	}
 	if url == "" {
-		fmt.Fprintln(os.Stderr, ui.Error("--url is required for custom providers"))
+		fmt.Fprintln(os.Stderr, ui.Error("--base-url is required for custom providers"))
 		os.Exit(1)
 	}
 
@@ -84,9 +113,13 @@ func runAddHeadless(args []string) {
 		name = profile.NextAlias(*providerID)
 	}
 
-	// Validate key
+	// Provider-aware defaults: mirror the interactive wizard
+	noTraffic := prov.ID != "anthropic"
+	noBetas := prov.ID != "anthropic"
+	noAttr := prov.ID != "anthropic"
+
 	fmt.Print(ui.DimStyle.Render("  Validating... "))
-	if err := provider.Ping(url, *key, *sonnet); err != nil {
+	if err := provider.Ping(url, apiKey, sonnet); err != nil {
 		fmt.Println(ui.Warn(fmt.Sprintf("Could not verify key: %v", err)))
 	} else {
 		fmt.Println(ui.Success("Key valid"))
@@ -96,13 +129,13 @@ func runAddHeadless(args []string) {
 		Name:                       name,
 		ProviderID:                 *providerID,
 		BaseURL:                    url,
-		SonnetModel:                *sonnet,
-		OpusModel:                  *opus,
-		HaikuModel:                 *haiku,
-		SubagentModel:              *subagent,
-		DisableNonessentialTraffic: noTraffic,
-		DisableExperimentalBetas:   noBetas,
-		DisableAttribution:         noAttr,
+		SonnetModel:                sonnet,
+		OpusModel:                  opus,
+		HaikuModel:                 haiku,
+		SubagentModel:              subagent,
+		DisableNonessentialTraffic: &noTraffic,
+		DisableExperimentalBetas:   &noBetas,
+		DisableAttribution:         &noAttr,
 		MinimalMode:                *minimal,
 	}
 
@@ -134,11 +167,20 @@ func runAddHeadless(args []string) {
 		}
 	}
 
-	if err := profile.Save(p, *key); err != nil {
+	if err := profile.Save(p, apiKey); err != nil {
 		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Failed to save: %v", err)))
 		os.Exit(1)
 	}
 
 	fmt.Println(ui.Success(fmt.Sprintf("Profile %q saved", name)))
 	fmt.Println(ui.NextStep("Launch it with:", "clavis "+name))
+}
+
+func hasAnyFlag(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "---") {
+			return true
+		}
+	}
+	return false
 }
