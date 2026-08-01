@@ -52,6 +52,10 @@ func newModelSelect(title, hint string, items []selectItem, height int) modelSel
 	ti.Prompt = "/"
 	ti.Placeholder = "type to filter..."
 	ti.CharLimit = 80
+	// Width must be >= the placeholder length, otherwise bubbles' textinput
+	// sizes its placeholder buffer to Width+1 runes and truncates it (with the
+	// default Width of 0 the placeholder collapses to a single "t").
+	ti.Width = 40
 	ti.Focus()
 
 	m := modelSelect{
