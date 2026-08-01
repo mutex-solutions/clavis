@@ -28,7 +28,7 @@ func main() {
 	case "--version", "-v", "version":
 		fmt.Printf("clavis %s\n", version)
 	case "add":
-		runAdd()
+		runAddOrHeadless(args[1:])
 	case "list", "ls":
 		runList()
 	case "remove", "rm":
@@ -228,17 +228,19 @@ func runList() {
 // runRemove deletes a profile.
 func runRemove(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: clavis remove <name>")
+		fmt.Fprintln(os.Stderr, "Usage: clavis remove <name> [--force]")
 		os.Exit(1)
 	}
 
 	name := args[0]
+	force := len(args) > 1 && args[1] == "--force"
+
 	if !profile.Exists(name) {
 		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Profile %q not found. Run %s to see all profiles.", name, ui.CommandStyle.Render("clavis list"))))
 		os.Exit(1)
 	}
 
-	if !ui.ConfirmDelete(name) {
+	if !force && !ui.ConfirmDelete(name) {
 		fmt.Println("Cancelled.")
 		return
 	}
