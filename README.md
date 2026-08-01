@@ -2,6 +2,10 @@
 
 > 🔑 Claude Code provider manager. One binary, many backends.
 
+[![CI](https://github.com/dinhlongviolin1/clavis/actions/workflows/ci.yml/badge.svg)](https://github.com/dinhlongviolin1/clavis/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/dinhlongviolin1/clavis)](https://github.com/dinhlongviolin1/clavis/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **Clavis** manages multiple Anthropic-compatible API providers for
 [Claude Code](https://code.claude.com). Store API keys securely, pick a
 profile, launch. Single static Go binary — no Node, no Python, no runtime.
