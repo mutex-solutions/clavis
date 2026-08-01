@@ -3,8 +3,11 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/charmbracelet/huh"
 	"github.com/dinhlongviolin1/clavis/internal/profile"
@@ -21,6 +24,17 @@ type AddResult struct {
 }
 
 func AddProfile() (*AddResult, error) {
+	// Intercept Ctrl+C at the OS level so it ALWAYS exits.
+	// huh treats Esc and Ctrl+C identically — without this,
+	// Ctrl+C would just go back one step instead of exiting.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT)
+	defer signal.Stop(sigCh)
+	go func() {
+		<-sigCh
+		os.Exit(130)
+	}()
+
 	var (
 		providerID                                                        string
 		baseURL                                                           string
