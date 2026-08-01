@@ -46,6 +46,8 @@ func main() {
 		runProvidersCmd(args[1:])
 	case "validate":
 		runValidate(args[1:])
+	case "test":
+		runTest(args[1:])
 	case "start":
 		runSelector(args[1:])
 	default:
@@ -77,8 +79,11 @@ Usage:
   clavis remove, rm <name>    Delete a profile
   clavis providers            Show provider catalog
   clavis validate <name>      Ping a profile's provider
+  clavis test <name>          Check a profile is set up and runnable
   clavis version              Print version
-	clavis completion <shell>    Generate shell completion script
+  clavis completion <shell>   Generate shell completion script
+
+Run 'clavis add --help' for headless/agent flags.
 
 Examples:
   clavis                                # TUI picker

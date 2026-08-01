@@ -94,17 +94,17 @@ func TestBuildSelectItems_SkipsUnknownAndEmptyPins(t *testing.T) {
 	}
 }
 
-func TestBuildSelectItems_ExtraLabelLast(t *testing.T) {
+func TestBuildSelectItems_ExtraLabelFirst(t *testing.T) {
 	items := buildSelectItems(models("a", "b"), "(default — use sonnet)", []string{"b"})
-	want := []string{"b", "a", "(default — use sonnet)"}
+	want := []string{"(default — use sonnet)", "b", "a"}
 	if !eq(labels(items), want) {
 		t.Fatalf("order = %v, want %v", labels(items), want)
 	}
-	last := items[len(items)-1]
-	if last.value != "" {
-		t.Errorf("extra entry value = %q, want empty (signals fallback)", last.value)
+	first := items[0]
+	if first.value != "" {
+		t.Errorf("extra entry value = %q, want empty (signals fallback)", first.value)
 	}
-	if last.pinned {
+	if first.pinned {
 		t.Error("extra entry should not be pinned")
 	}
 }

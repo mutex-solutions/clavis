@@ -72,7 +72,7 @@ func TestProfileNameMismatch(t *testing.T) {
 }
 
 func TestValidNameRejectsReservedWords(t *testing.T) {
-	reserved := []string{"add", "list", "ls", "remove", "rm", "start", "providers", "validate", "version", "help"}
+	reserved := []string{"add", "list", "ls", "remove", "rm", "start", "providers", "validate", "version", "help", "test", "completion"}
 	for _, name := range reserved {
 		err := ValidName(name)
 		if err == nil {

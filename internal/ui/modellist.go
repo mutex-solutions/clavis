@@ -186,9 +186,10 @@ func (m modelSelect) View() string {
 	return sb.String()
 }
 
-// buildSelectItems produces the ordered list for the selector: pinned models
-// first (deduped, in the given order, only if present in the catalog), then the
-// remaining catalog models in order, then the optional extra entry last.
+// buildSelectItems produces the ordered list for the selector: the optional
+// extra entry first (e.g. "(default — use sonnet)", so the fallback is the
+// default the cursor lands on), then pinned models (deduped, in the given
+// order, only if present in the catalog), then the remaining catalog models.
 func buildSelectItems(models []provider.ModelInfo, extraLabel string, pinned []string) []selectItem {
 	pinnedSet := make(map[string]bool, len(pinned))
 	owner := make(map[string]string, len(models))
@@ -197,6 +198,9 @@ func buildSelectItems(models []provider.ModelInfo, extraLabel string, pinned []s
 	}
 
 	items := make([]selectItem, 0, len(models)+1)
+	if extraLabel != "" {
+		items = append(items, selectItem{label: extraLabel, value: ""})
+	}
 	for _, id := range pinned {
 		if id == "" || pinnedSet[id] {
 			continue
@@ -213,19 +217,16 @@ func buildSelectItems(models []provider.ModelInfo, extraLabel string, pinned []s
 		}
 		items = append(items, selectItem{label: m.ID, owner: m.OwnedBy, value: m.ID})
 	}
-	if extraLabel != "" {
-		items = append(items, selectItem{label: extraLabel, value: ""})
-	}
 	return items
 }
 
 // RunModelSelect shows an interactive model selector on a cleared screen.
 //
-//   - extraLabel: optional final entry (e.g. "(default — use sonnet)") with an
-//     empty return value.
-//   - pinned: model IDs already chosen for earlier tiers. They are floated to
-//     the top with a ★ marker, and the cursor starts on the first one — so the
-//     just-picked model is highlighted and immediately re-selectable.
+//   - extraLabel: optional entry shown first (e.g. "(default — use sonnet)")
+//     with an empty return value — the cursor starts on it so it's the default.
+//   - pinned: model IDs already chosen for earlier tiers. They are floated below
+//     the extra entry with a ★ marker, so a just-picked model stays one keypress
+//     away.
 //
 // Returns the chosen value, or errBack on Esc. Ctrl+C exits the process (130).
 func RunModelSelect(title string, models []provider.ModelInfo, height int, extraLabel string, pinned []string) (string, error) {

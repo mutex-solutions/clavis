@@ -75,6 +75,7 @@ func AddProfile() (*AddResult, error) {
 		stepAlias
 		stepModelSelect
 		stepAdvanced
+		stepConfirm
 	)
 
 	// isBack reports whether an error means "go to the previous step".
@@ -158,8 +159,10 @@ func AddProfile() (*AddResult, error) {
 				return nil, err
 			}
 			effort, noThinking, compactPct = e, nt, cp
+			step = stepConfirm
 
-			// Build profile and return.
+		case stepConfirm:
+			// Build the profile so we can show a full summary before saving.
 			is3P := providerID != "anthropic"
 			p := &profile.Profile{
 				Name: alias, ProviderID: providerID, BaseURL: baseURL,
@@ -178,9 +181,69 @@ func AddProfile() (*AddResult, error) {
 			if compactPct > 0 {
 				p.AutoCompactPct = &compactPct
 			}
+
+			ok, err := wizardConfirm(p)
+			if err != nil {
+				if isBack(err) {
+					step = stepAdvanced
+					continue
+				}
+				return nil, err
+			}
+			if !ok {
+				return nil, errCancel // user chose "Cancel" on the review screen
+			}
 			return &AddResult{Profile: p, APIKey: apiKey}, nil
 		}
 	}
+}
+
+// wizardConfirm shows a summary of the profile and asks the user to save.
+// Returns (true, nil) to save, (false, nil) to cancel, or errBack on Esc.
+func wizardConfirm(p *profile.Profile) (bool, error) {
+	clearScreen()
+	fmt.Println(TitleStyle.Render("Review profile"))
+	fmt.Println()
+
+	row := func(label, val string) {
+		if val == "" {
+			return
+		}
+		fmt.Printf("  %s %s\n", DimStyle.Render(fmt.Sprintf("%-16s", label)), val)
+	}
+	row("Name", p.Name)
+	row("Provider", p.ProviderID)
+	row("Base URL", p.BaseURL)
+	row("Model (main)", p.SonnetModel)
+	if p.OpusModel != "" && p.OpusModel != p.SonnetModel {
+		row("Reasoning", p.OpusModel)
+	}
+	if p.HaikuModel != "" && p.HaikuModel != p.SonnetModel {
+		row("Fast", p.HaikuModel)
+	}
+	if p.SubagentModel != "" && p.SubagentModel != p.SonnetModel {
+		row("Subagent", p.SubagentModel)
+	}
+	if p.EffortLevel != "" && p.EffortLevel != "auto" {
+		row("Effort", p.EffortLevel)
+	}
+	if p.DisableThinking {
+		row("Thinking", "disabled")
+	}
+	if p.AutoCompactPct != nil {
+		row("Auto-compact", fmt.Sprintf("%d%%", *p.AutoCompactPct))
+	}
+	fmt.Println()
+
+	var save bool
+	if err := runForm(huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title("Save this profile?").
+			Description("The key is validated before saving. esc = go back.").
+			Affirmative("Yes, save").Negative("Cancel").Value(&save),
+	))); err != nil {
+		return false, errBack
+	}
+	return save, nil
 }
 
 // wizardProvider asks the user to pick a provider from the catalog.
@@ -339,8 +402,12 @@ func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error
 		return "", false, 0, nil // "No, use defaults" → proceed with defaults
 	}
 
+	// Show each setting on its own screen — one field per huh group renders
+	// cleanly, whereas stacking several fields in one group misaligns them.
+
+	// 1. Effort level
 	effort = "auto"
-	var compactStr string
+	clearScreen()
 	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("Effort level").
 			Description(DimStyle.Render("esc = go back")).
@@ -352,11 +419,26 @@ func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error
 				huh.NewOption("xhigh — very thorough", "xhigh"),
 				huh.NewOption("max — maximum reasoning depth", "max"),
 			).Value(&effort),
+	))); err != nil {
+		return "", false, 0, errBack
+	}
+
+	// 2. Disable thinking tokens
+	clearScreen()
+	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Disable thinking tokens?").
-			Description("Omit thinking tokens. Needed for providers that don't support them.").
+			Description("Omit thinking tokens. Needed for providers that don't support them. esc = go back.").
 			Affirmative("Yes, disable").Negative("No").Value(&noThinking),
+	))); err != nil {
+		return "", false, 0, errBack
+	}
+
+	// 3. Auto-compact threshold
+	var compactStr string
+	clearScreen()
+	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewInput().Title("Auto-compact threshold (%)").
-			Description("Lower = compact sooner. Default: 80%. Empty = skip.").
+			Description("Lower = compact sooner. Default: 80%. Empty = skip. esc = go back.").
 			Placeholder("80").
 			Validate(func(s string) error {
 				if s == "" {
