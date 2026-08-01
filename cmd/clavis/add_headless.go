@@ -50,6 +50,7 @@ func runAddOrHeadless(args []string) {
 	timeoutMs := fs.Int("timeout", 0, "API timeout in ms (default 600000)")
 	noThinking := fs.Bool("no-thinking", false, "Disable thinking tokens")
 	minimal := fs.Bool("bare", false, "Minimal mode (fewer env vars set)")
+	isolated := fs.Bool("isolated", false, "Use an isolated CLAUDE_CONFIG_DIR (default: share your ~/.claude)")
 	customHeaders := fs.String("headers", "", `Custom headers, "Key: val\nKey2: val2"`)
 	asJSON := fs.Bool("json", false, "Emit a machine-readable JSON result (for agents)")
 	fs.Usage = func() { printAddHelp(fs) }
@@ -152,6 +153,7 @@ func runAddOrHeadless(args []string) {
 		DisableExperimentalBetas:   &noBetas,
 		DisableAttribution:         &noAttr,
 		MinimalMode:                *minimal,
+		IsolatedConfig:             *isolated,
 	}
 
 	if *contextWindow > 0 {
@@ -222,6 +224,8 @@ Common options:
   --compact-pct <n>  Auto-compact threshold, 1-100
   --context-window <n> / --max-tokens <n> / --timeout <ms>
   --headers "K: v\nK2: v2"   Extra headers
+  --isolated         Give this profile its own CLAUDE_CONFIG_DIR
+                     (default: share your ~/.claude — MCP, agents, memory)
   --bare             Minimal mode (fewer env vars)
   --json             Machine-readable result on stdout; errors as JSON on stderr
 

@@ -1,12 +1,10 @@
 package claude
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -26,12 +24,9 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 		return 1, fmt.Errorf("build env: %w", err)
 	}
 
-	// Write settings.json if attribution disabled
-	if p.ShouldDisableAttribution() {
-		if err := writeSettings(p); err != nil {
-			return 1, fmt.Errorf("write settings: %w", err)
-		}
-	}
+	// Attribution is disabled via the CLAUDE_CODE_ATTRIBUTION_HEADER env var
+	// (set in buildEnv), not a settings.json file — so we never write into the
+	// user's real ~/.claude when running in shared-config mode.
 
 	// Build args
 	args := buildArgs(p, extraArgs)
@@ -102,11 +97,8 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 
 // buildEnv constructs the full environment for the claude child process.
 func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
-	configDir := profile.ProfileDir(p.Name)
-
 	// Build the set of vars we will explicitly set.
 	set := map[string]string{
-		"CLAUDE_CONFIG_DIR":              configDir,
 		"ANTHROPIC_BASE_URL":             p.BaseURL,
 		"ANTHROPIC_AUTH_TOKEN":           apiKey,
 		"ANTHROPIC_MODEL":                p.SonnetModel,
@@ -114,6 +106,17 @@ func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
 		"ANTHROPIC_DEFAULT_OPUS_MODEL":   p.ResolvedOpus(),
 		"ANTHROPIC_DEFAULT_HAIKU_MODEL":  p.ResolvedHaiku(),
 		"CLAUDE_CODE_SUBAGENT_MODEL":     p.ResolvedSubagent(),
+	}
+
+	// Config dir: isolated profiles get their own; shared profiles inherit the
+	// user's default ~/.claude (we don't set CLAUDE_CONFIG_DIR at all).
+	if dir, isolated := p.ConfigDir(); isolated {
+		set["CLAUDE_CONFIG_DIR"] = dir
+	}
+
+	// Attribution header (disabled for 3P by default) — via env, not a file.
+	if p.ShouldDisableAttribution() {
+		set["CLAUDE_CODE_ATTRIBUTION_HEADER"] = "0"
 	}
 
 	if p.AutoCompactPct != nil {
@@ -157,6 +160,9 @@ func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
 		"ANTHROPIC_API_KEY":           true,
 		"CLAUDE_CODE_OAUTH_TOKEN":     true,
 		"CLAUDE_CREDENTIALS_JSON_B64": true,
+		// Always strip attribution: we own this decision per-profile, so an
+		// inherited shell value must not leak through in shared-config mode.
+		"CLAUDE_CODE_ATTRIBUTION_HEADER": true,
 	}
 	for k := range set {
 		strip[k] = true
@@ -187,35 +193,29 @@ func buildArgs(p *profile.Profile, extraArgs []string) []string {
 	return args
 }
 
-// writeSettings writes a minimal settings.json for attribution control.
-func writeSettings(p *profile.Profile) error {
-	configDir := profile.ProfileDir(p.Name)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		return err
-	}
+// Plan describes exactly what a launch will do, for a pre-flight banner.
+type Plan struct {
+	Provider   string   // provider ID
+	BaseURL    string   // routed endpoint
+	Model      string   // primary (sonnet) model
+	ConfigDir  string   // "" means the user's default ~/.claude
+	Isolated   bool     // whether a per-profile config dir is used
+	ClaudeArgs []string // args forwarded to the claude binary
+}
 
-	settingsPath := filepath.Join(configDir, "settings.json")
-
-	// Read existing settings if present (don't clobber)
-	var settings map[string]interface{}
-	if data, err := os.ReadFile(settingsPath); err == nil {
-		_ = json.Unmarshal(data, &settings)
+// PlanFor returns what Launch would do with this profile and extra args,
+// so callers can show it before spawning claude.
+func PlanFor(p *profile.Profile, extraArgs []string) Plan {
+	if len(extraArgs) > 0 && extraArgs[0] == "--" {
+		extraArgs = extraArgs[1:]
 	}
-	if settings == nil {
-		settings = make(map[string]interface{})
+	dir, isolated := p.ConfigDir()
+	return Plan{
+		Provider:   p.ProviderID,
+		BaseURL:    p.BaseURL,
+		Model:      p.SonnetModel,
+		ConfigDir:  dir,
+		Isolated:   isolated,
+		ClaudeArgs: buildArgs(p, extraArgs),
 	}
-
-	// Ensure env block exists
-	envBlock, ok := settings["env"].(map[string]interface{})
-	if !ok {
-		envBlock = make(map[string]interface{})
-	}
-	envBlock["CLAUDE_CODE_ATTRIBUTION_HEADER"] = "0"
-	settings["env"] = envBlock
-
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(settingsPath, append(data, '\n'), 0o644)
 }

@@ -66,6 +66,7 @@ func AddProfile() (*AddResult, error) {
 		effort                                            string
 		noThinking                                        bool
 		compactPct                                        int
+		isolated                                          bool
 	)
 
 	const (
@@ -150,7 +151,7 @@ func AddProfile() (*AddResult, error) {
 			step = stepAdvanced
 
 		case stepAdvanced:
-			e, nt, cp, err := wizardAdvanced()
+			e, nt, cp, iso, err := wizardAdvanced()
 			if err != nil {
 				if isBack(err) {
 					step = stepModelSelect
@@ -158,7 +159,7 @@ func AddProfile() (*AddResult, error) {
 				}
 				return nil, err
 			}
-			effort, noThinking, compactPct = e, nt, cp
+			effort, noThinking, compactPct, isolated = e, nt, cp, iso
 			step = stepConfirm
 
 		case stepConfirm:
@@ -171,6 +172,7 @@ func AddProfile() (*AddResult, error) {
 				DisableNonessentialTraffic: &is3P,
 				DisableExperimentalBetas:   &is3P,
 				DisableAttribution:         &is3P,
+				IsolatedConfig:             isolated,
 			}
 			if effort != "" {
 				p.EffortLevel = effort
@@ -232,6 +234,11 @@ func wizardConfirm(p *profile.Profile) (bool, error) {
 	}
 	if p.AutoCompactPct != nil {
 		row("Auto-compact", fmt.Sprintf("%d%%", *p.AutoCompactPct))
+	}
+	if p.IsolatedConfig {
+		row("Config", "isolated (own ~/.clavis dir)")
+	} else {
+		row("Config", "shared ~/.claude")
 	}
 	fmt.Println()
 
@@ -389,17 +396,17 @@ func wizardModelSelect(models []provider.ModelInfo) (opus, sonnet, haiku, subage
 	return selectTiersDetailed(models)
 }
 
-func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error) {
+func wizardAdvanced() (effort string, noThinking bool, compactPct int, isolated bool, err error) {
 	var show bool
 	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Advanced configuration?").
-			Description("Effort, thinking, compaction. esc = go back.").
+			Description("Effort, thinking, compaction, config isolation. esc = go back.").
 			Affirmative("Yes, customize").Negative("No, use defaults").Value(&show),
 	))); err != nil {
-		return "", false, 0, errBack // esc = back to model selection
+		return "", false, 0, false, errBack // esc = back to model selection
 	}
 	if !show {
-		return "", false, 0, nil // "No, use defaults" → proceed with defaults
+		return "", false, 0, false, nil // "No, use defaults" → proceed with defaults
 	}
 
 	// Show each setting on its own screen — one field per huh group renders
@@ -420,7 +427,7 @@ func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error
 				huh.NewOption("max — maximum reasoning depth", "max"),
 			).Value(&effort),
 	))); err != nil {
-		return "", false, 0, errBack
+		return "", false, 0, false, errBack
 	}
 
 	// 2. Disable thinking tokens
@@ -430,7 +437,7 @@ func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error
 			Description("Omit thinking tokens. Needed for providers that don't support them. esc = go back.").
 			Affirmative("Yes, disable").Negative("No").Value(&noThinking),
 	))); err != nil {
-		return "", false, 0, errBack
+		return "", false, 0, false, errBack
 	}
 
 	// 3. Auto-compact threshold
@@ -451,12 +458,23 @@ func wizardAdvanced() (effort string, noThinking bool, compactPct int, err error
 				return nil
 			}).Value(&compactStr),
 	))); err != nil {
-		return "", false, 0, errBack
+		return "", false, 0, false, errBack
 	}
 	if compactStr != "" {
 		compactPct, _ = strconv.Atoi(compactStr)
 	}
-	return effort, noThinking, compactPct, nil
+
+	// 4. Config isolation
+	clearScreen()
+	if err := runForm(huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title("Isolate Claude config?").
+			Description("No: share your ~/.claude (MCP servers, agents, memory). Yes: give this profile its own empty config. esc = go back.").
+			Affirmative("Yes, isolate").Negative("No, share ~/.claude").Value(&isolated),
+	))); err != nil {
+		return "", false, 0, false, errBack
+	}
+
+	return effort, noThinking, compactPct, isolated, nil
 }
 
 func selectOneModel(models []provider.ModelInfo) (string, error) {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dinhlongviolin1/clavis/internal/claude"
@@ -143,12 +144,16 @@ func launchProfile(p *profile.Profile, extraArgs []string) {
 		os.Exit(1)
 	}
 
+	// Intercept clavis-level launch overrides that appear *before* a "--".
+	// Everything after "--" (or once we hit an unknown flag) goes to claude.
+	extraArgs = applyLaunchOverrides(p, extraArgs)
+
 	// Strip leading "--" if present
 	if len(extraArgs) > 0 && extraArgs[0] == "--" {
 		extraArgs = extraArgs[1:]
 	}
 
-	fmt.Println(ui.DimStyle.Render(fmt.Sprintf("  → launching claude via %s (%s)", p.ProviderID, p.SonnetModel)))
+	printLaunchBanner(p, claude.PlanFor(p, extraArgs))
 
 	code, err := claude.Launch(p, apiKey, extraArgs)
 	if err != nil {
@@ -156,6 +161,75 @@ func launchProfile(p *profile.Profile, extraArgs []string) {
 		os.Exit(1)
 	}
 	os.Exit(code)
+}
+
+// applyLaunchOverrides consumes clavis-specific launch flags from the front of
+// args (mutating the profile in memory only, not on disk) and returns the
+// remaining args to forward to claude. Scanning stops at the first "--" or the
+// first arg clavis doesn't recognise, so claude's own flags pass through intact.
+func applyLaunchOverrides(p *profile.Profile, args []string) []string {
+	i := 0
+	for i < len(args) {
+		switch args[i] {
+		case "--isolated":
+			p.IsolatedConfig = true
+		case "--shared":
+			p.IsolatedConfig = false
+		case "--":
+			return args[i:] // reached the explicit separator
+		default:
+			return args[i:] // a claude flag/arg — stop consuming
+		}
+		i++
+	}
+	return args[i:]
+}
+
+// printLaunchBanner shows what clavis is about to do before handing off to
+// claude: which profile/provider/model, which config dir, and — split out
+// clearly — which flags clavis applied vs which are forwarded to claude.
+func printLaunchBanner(p *profile.Profile, plan claude.Plan) {
+	fmt.Println()
+	fmt.Printf("  %s %s  %s\n",
+		ui.TitleStyle.Render("clavis"),
+		ui.CommandStyle.Render(p.Name),
+		ui.DimStyle.Render("→ "+plan.Provider))
+	fmt.Printf("  %s %s\n", ui.DimStyle.Render("model  "), plan.Model)
+	fmt.Printf("  %s %s\n", ui.DimStyle.Render("url    "), plan.BaseURL)
+
+	// Config dir: your default ~/.claude vs an isolated per-profile dir.
+	if plan.Isolated {
+		fmt.Printf("  %s %s %s\n", ui.DimStyle.Render("config "), plan.ConfigDir,
+			ui.WarnStyle.Render("(isolated — no access to your ~/.claude)"))
+	} else {
+		fmt.Printf("  %s %s\n", ui.DimStyle.Render("config "),
+			ui.DimStyle.Render("default ~/.claude (your MCP servers, agents, memory)"))
+	}
+
+	// clavis-applied launch flags (from the profile).
+	var clavisFlags []string
+	if p.EffortLevel != "" && p.EffortLevel != "auto" {
+		clavisFlags = append(clavisFlags, "effort="+p.EffortLevel)
+	}
+	if p.DisableThinking {
+		clavisFlags = append(clavisFlags, "no-thinking")
+	}
+	if p.AutoCompactPct != nil {
+		clavisFlags = append(clavisFlags, fmt.Sprintf("compact=%d%%", *p.AutoCompactPct))
+	}
+	if p.MinimalMode {
+		clavisFlags = append(clavisFlags, "bare")
+	}
+	if len(clavisFlags) > 0 {
+		fmt.Printf("  %s %s\n", ui.DimStyle.Render("clavis "), strings.Join(clavisFlags, ", "))
+	}
+
+	// Flags forwarded verbatim to the claude binary.
+	if len(plan.ClaudeArgs) > 0 {
+		fmt.Printf("  %s %s\n", ui.DimStyle.Render("claude "),
+			ui.CommandStyle.Render(strings.Join(plan.ClaudeArgs, " ")))
+	}
+	fmt.Println()
 }
 
 // runAdd runs the add-profile wizard.

@@ -43,6 +43,23 @@ type Profile struct {
 	// Launch Preferences
 	MinimalMode   bool              `json:"minimal_mode,omitempty"`
 	CustomHeaders map[string]string `json:"custom_headers,omitempty"`
+
+	// Config isolation. When false (default), clavis launches Claude Code with
+	// your normal ~/.claude — all MCP servers, agents, memory, and settings
+	// intact — and only routes the provider/model via env vars. When true, the
+	// profile gets its own isolated CLAUDE_CONFIG_DIR (~/.clavis/profiles/<name>)
+	// with no access to your default setup.
+	IsolatedConfig bool `json:"isolated_config,omitempty"`
+}
+
+// ConfigDir returns the CLAUDE_CONFIG_DIR the profile should launch with, and
+// whether it is isolated. An empty string means "inherit the user's default"
+// (do not set CLAUDE_CONFIG_DIR at all).
+func (p *Profile) ConfigDir() (dir string, isolated bool) {
+	if p.IsolatedConfig {
+		return ProfileDir(p.Name), true
+	}
+	return "", false
 }
 
 // ResolvedOpus returns opus model or falls back to sonnet.

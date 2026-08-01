@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -209,12 +208,35 @@ func TestBuildEnvOptionalFields(t *testing.T) {
 	}
 }
 
-func TestBuildEnvConfigDir(t *testing.T) {
+func TestBuildEnvConfigDirSharedByDefault(t *testing.T) {
+	// Default profiles share the user's ~/.claude: CLAUDE_CONFIG_DIR must NOT
+	// be set, so any inherited value (the user's own) passes through.
 	p := &profile.Profile{
 		Name:        "my-profile",
 		ProviderID:  "deepseek",
 		BaseURL:     "https://api.deepseek.com/anthropic",
 		SonnetModel: "model",
+	}
+
+	t.Setenv("CLAUDE_CONFIG_DIR", "/home/user/.claude")
+	env, err := buildEnv(p, "key")
+	if err != nil {
+		t.Fatalf("buildEnv() error: %v", err)
+	}
+
+	m := envToMap(env)
+	if got := m["CLAUDE_CONFIG_DIR"]; got != "/home/user/.claude" {
+		t.Errorf("CLAUDE_CONFIG_DIR = %q, want the inherited /home/user/.claude (shared mode)", got)
+	}
+}
+
+func TestBuildEnvConfigDirIsolated(t *testing.T) {
+	p := &profile.Profile{
+		Name:           "my-profile",
+		ProviderID:     "deepseek",
+		BaseURL:        "https://api.deepseek.com/anthropic",
+		SonnetModel:    "model",
+		IsolatedConfig: true,
 	}
 
 	env, err := buildEnv(p, "key")
@@ -250,35 +272,42 @@ func TestBuildArgsNoMinimal(t *testing.T) {
 	}
 }
 
-func TestWriteSettings(t *testing.T) {
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	t.Setenv("HOME", tmpDir)
-	defer t.Setenv("HOME", origHome)
-
+func TestBuildEnvAttributionViaEnv(t *testing.T) {
+	// Attribution is disabled via env var (not a settings.json file), so shared
+	// mode never writes into the user's real ~/.claude.
 	p := &profile.Profile{
-		Name:        "settings-test",
-		ProviderID:  "deepseek",
+		Name:        "attr-test",
+		ProviderID:  "deepseek", // 3P → attribution disabled by default
 		BaseURL:     "https://api.deepseek.com/anthropic",
 		SonnetModel: "model",
 	}
 
-	err := writeSettings(p)
+	env, err := buildEnv(p, "key")
 	if err != nil {
-		t.Fatalf("writeSettings() error: %v", err)
+		t.Fatalf("buildEnv() error: %v", err)
 	}
 
-	// Read and verify
-	data, err := os.ReadFile(tmpDir + "/.clavis/profiles/settings-test/settings.json")
-	if err != nil {
-		t.Fatalf("read settings.json: %v", err)
+	m := envToMap(env)
+	if got := m["CLAUDE_CODE_ATTRIBUTION_HEADER"]; got != "0" {
+		t.Errorf("CLAUDE_CODE_ATTRIBUTION_HEADER = %q, want 0", got)
+	}
+}
+
+func TestBuildEnvAnthropicKeepsAttribution(t *testing.T) {
+	// Anthropic (first-party) keeps attribution → var must be absent.
+	p := &profile.Profile{
+		Name:        "anthropic-attr",
+		ProviderID:  "anthropic",
+		BaseURL:     "https://api.anthropic.com",
+		SonnetModel: "model",
 	}
 
-	content := string(data)
-	if !strings.Contains(content, "CLAUDE_CODE_ATTRIBUTION_HEADER") {
-		t.Error("settings.json should contain CLAUDE_CODE_ATTRIBUTION_HEADER")
+	env, err := buildEnv(p, "key")
+	if err != nil {
+		t.Fatalf("buildEnv() error: %v", err)
 	}
-	if !strings.Contains(content, `"0"`) {
-		t.Error("attribution header should be '0'")
+
+	if _, ok := envToMap(env)["CLAUDE_CODE_ATTRIBUTION_HEADER"]; ok {
+		t.Error("anthropic profile should not set CLAUDE_CODE_ATTRIBUTION_HEADER")
 	}
 }
