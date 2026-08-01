@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/charmbracelet/huh"
@@ -200,26 +199,6 @@ func wizardModelSelect(models []provider.ModelInfo) (opus, sonnet, haiku, subage
 	}
 
 	filtered := models
-	if len(models) > 50 {
-		var search string
-		if err := huh.NewForm(huh.NewGroup(
-			huh.NewInput().Title("Filter models").
-				Description(fmt.Sprintf("%d models — type to filter, esc = go back", len(models))).
-				Placeholder("type part of model name...").Value(&search),
-		)).Run(); err != nil {
-			return "", "", "", "", errBack
-		}
-		if search != "" {
-			filtered = nil
-			s := strings.ToLower(search)
-			for _, m := range models {
-				if strings.Contains(strings.ToLower(m.ID), s) {
-					filtered = append(filtered, m)
-				}
-			}
-		}
-		if len(filtered) == 0 { filtered = models }
-	}
 
 	var simple bool
 	if err := huh.NewForm(huh.NewGroup(
