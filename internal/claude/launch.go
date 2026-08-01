@@ -43,6 +43,9 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	// Isolate claude in its own process group so terminal signals (Ctrl+C)
+	// don't double-deliver. On parent death, the kernel sends SIGTERM.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
 
 	// Signal forwarding: catch SIGINT/SIGTERM and forward to child
 	sigCh := make(chan os.Signal, 1)
@@ -53,14 +56,16 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 		return 1, fmt.Errorf("failed to start claude: %w", err)
 	}
 
-	// Forward signals in background
+	// Forward signals in background. Since claude is in its own process group
+	// (Setpgid), we forward to the process group (negative PID) so that any
+	// grandchildren claude spawns also receive the signal.
 	done := make(chan struct{})
 	go func() {
 		for {
 			select {
 			case sig := <-sigCh:
 				if cmd.Process != nil {
-					_ = cmd.Process.Signal(sig)
+					_ = syscall.Kill(-cmd.Process.Pid, sig.(syscall.Signal))
 				}
 			case <-done:
 				return
@@ -76,6 +81,14 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
+			// Unwrap to get the platform-specific exit status.
+			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+				if status.Signaled() {
+					// Signal death: return 128 + signal number (standard convention).
+					return 128 + int(status.Signal()), nil
+				}
+				return status.ExitStatus(), nil
+			}
 			return exitErr.ExitCode(), nil
 		}
 		return 1, fmt.Errorf("claude exited with error: %w", err)
