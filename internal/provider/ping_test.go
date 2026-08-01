@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -34,11 +35,19 @@ func TestPingBadKey(t *testing.T) {
 	}
 }
 
-func TestPingUnreachable(t *testing.T) {
-	// Use an unreachable address to test timeout behavior
-	err := Ping("http://192.0.2.1:0", "test-key", "test-model")
+func TestPingRefused(t *testing.T) {
+	// Bind a port then immediately close it — connection will be refused instantly.
+	// No timeout wait like with unreachable hosts.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to bind: %v", err)
+	}
+	addr := l.Addr().String()
+	l.Close()
+
+	err = Ping("http://"+addr, "test-key", "test-model")
 	if err == nil {
-		t.Error("Ping() should fail for unreachable host")
+		t.Error("Ping() should fail for refused connection")
 	}
 }
 
@@ -66,7 +75,6 @@ func TestPingTrailingSlash(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Save() normalizes trailing slashes, but Ping should handle them too
 	if err := Ping(srv.URL+"/", "test-key", "test-model"); err != nil {
 		t.Errorf("Ping() with trailing slash: %v", err)
 	}
