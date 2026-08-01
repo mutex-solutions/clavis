@@ -13,6 +13,7 @@ import (
 
 // errBack signals that the user wants to go to the previous step.
 var errBack = errors.New("go back")
+var errCancel = errors.New("cancel")
 
 type AddResult struct {
 	Profile *profile.Profile
