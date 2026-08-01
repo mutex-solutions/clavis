@@ -85,57 +85,20 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 
 // buildEnv constructs the full environment for the claude child process.
 func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
-	// Start with a copy of current env, minus vars we want to remove or override.
-	// We must strip ALL vars we're about to set, otherwise duplicates appear
-	// and on Linux getenv() returns the FIRST match (the user's shell value).
-	unsetVars := map[string]bool{
-		"ANTHROPIC_API_KEY":           true,
-		"CLAUDE_CODE_OAUTH_TOKEN":     true,
-		"CLAUDE_CREDENTIALS_JSON_B64": true,
-		// Stripped so our profile values take precedence:
-		"CLAUDE_CONFIG_DIR":                    true,
-		"ANTHROPIC_BASE_URL":                   true,
-		"ANTHROPIC_AUTH_TOKEN":                 true,
-		"ANTHROPIC_MODEL":                      true,
-		"ANTHROPIC_DEFAULT_SONNET_MODEL":       true,
-		"ANTHROPIC_DEFAULT_OPUS_MODEL":         true,
-		"ANTHROPIC_DEFAULT_HAIKU_MODEL":        true,
-		"CLAUDE_CODE_SUBAGENT_MODEL":           true,
-		"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE":      true,
-		"CLAUDE_CODE_AUTO_COMPACT_WINDOW":      true,
-		"CLAUDE_CODE_MAX_OUTPUT_TOKENS":        true,
-		"CLAUDE_CODE_EFFORT_LEVEL":             true,
-		"CLAUDE_CODE_DISABLE_THINKING":         true,
-		"API_TIMEOUT_MS":                       true,
-		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": true,
-		"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS":   true,
-		"ANTHROPIC_CUSTOM_HEADERS":             true,
-	}
-
-	var env []string
-	for _, e := range os.Environ() {
-		key := strings.SplitN(e, "=", 2)[0]
-		if !unsetVars[key] {
-			env = append(env, e)
-		}
-	}
-
-	// Config dir for session isolation
 	configDir := profile.ProfileDir(p.Name)
 
-	// Always set
+	// Build the set of vars we will explicitly set.
 	set := map[string]string{
-		"CLAUDE_CONFIG_DIR":                configDir,
-		"ANTHROPIC_BASE_URL":               p.BaseURL,
-		"ANTHROPIC_AUTH_TOKEN":             apiKey,
-		"ANTHROPIC_MODEL":                  p.SonnetModel,
-		"ANTHROPIC_DEFAULT_SONNET_MODEL":   p.SonnetModel,
-		"ANTHROPIC_DEFAULT_OPUS_MODEL":     p.ResolvedOpus(),
-		"ANTHROPIC_DEFAULT_HAIKU_MODEL":    p.ResolvedHaiku(),
-		"CLAUDE_CODE_SUBAGENT_MODEL":       p.ResolvedSubagent(),
+		"CLAUDE_CONFIG_DIR":              configDir,
+		"ANTHROPIC_BASE_URL":             p.BaseURL,
+		"ANTHROPIC_AUTH_TOKEN":           apiKey,
+		"ANTHROPIC_MODEL":                p.SonnetModel,
+		"ANTHROPIC_DEFAULT_SONNET_MODEL": p.SonnetModel,
+		"ANTHROPIC_DEFAULT_OPUS_MODEL":   p.ResolvedOpus(),
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL":  p.ResolvedHaiku(),
+		"CLAUDE_CODE_SUBAGENT_MODEL":     p.ResolvedSubagent(),
 	}
 
-	// Conditionally set
 	if p.AutoCompactPct != nil {
 		set["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = fmt.Sprintf("%d", *p.AutoCompactPct)
 	}
@@ -168,8 +131,27 @@ func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
 		set["ANTHROPIC_CUSTOM_HEADERS"] = strings.Join(parts, "\n")
 	}
 
+	// Vars to always strip (auth leaks), plus everything we're about to set
+	// (prevents duplicates — on Linux getenv returns the FIRST match).
+	strip := map[string]bool{
+		"ANTHROPIC_API_KEY":           true,
+		"CLAUDE_CODE_OAUTH_TOKEN":     true,
+		"CLAUDE_CREDENTIALS_JSON_B64": true,
+	}
+	for k := range set {
+		strip[k] = true
+	}
+
+	var env []string
+	for _, e := range os.Environ() {
+		key := strings.SplitN(e, "=", 2)[0]
+		if !strip[key] {
+			env = append(env, e)
+		}
+	}
+
 	for k, v := range set {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
+		env = append(env, k+"="+v)
 	}
 
 	return env, nil

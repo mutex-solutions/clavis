@@ -115,7 +115,11 @@ func ValidName(name string) error {
 
 // Dir returns the clavis root directory (~/.clavis).
 func Dir() string {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback: this should never happen on a normal system.
+		return filepath.Join(".", ".clavis")
+	}
 	return filepath.Join(home, ".clavis")
 }
 
@@ -137,6 +141,11 @@ func Load(name string) (*Profile, error) {
 	var p Profile
 	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, fmt.Errorf("profile %q is corrupt: %w", name, err)
+	}
+	// Validate the name inside the JSON matches what was requested
+	// (prevents a corrupted profile.json from redirecting paths).
+	if err := ValidName(p.Name); err != nil {
+		return nil, fmt.Errorf("profile %q has invalid internal name: %w", name, err)
 	}
 	return &p, nil
 }
@@ -184,8 +193,14 @@ func Save(p *Profile, apiKey string) error {
 
 	// Write .env (key only, 0600)
 	if apiKey != "" {
+		envPath := filepath.Join(dir, ".env")
 		envContent := fmt.Sprintf("CLAVIS_KEY=%s\n", apiKey)
-		if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envContent), 0o600); err != nil {
+		if err := os.WriteFile(envPath, []byte(envContent), 0o600); err != nil {
+			return err
+		}
+		// Enforce permissions even if file already existed (WriteFile only
+		// applies mode on creation).
+		if err := os.Chmod(envPath, 0o600); err != nil {
 			return err
 		}
 	}

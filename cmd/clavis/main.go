@@ -150,7 +150,7 @@ func runAdd() {
 	if err := validateKey(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel); err != nil {
 		fmt.Print("\r" + strings.Repeat(" ", 60) + "\r")
 		fmt.Println(ui.Error(fmt.Sprintf("key validation failed: %v", err)))
-		fmt.Println(ui.DimStyle.Render("  Saving profile anyway. Fix the key later with clavis add."))
+		fmt.Println(ui.DimStyle.Render("  Saving profile anyway. Edit ~/.clavis/profiles/<name>/.env to fix the key."))
 	} else {
 		fmt.Print("\r" + strings.Repeat(" ", 60) + "\r")
 		fmt.Println(ui.Success("Key valid"))

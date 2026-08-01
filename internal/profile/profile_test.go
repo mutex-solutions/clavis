@@ -34,9 +34,9 @@ func TestValidName(t *testing.T) {
 
 func TestTierFallback(t *testing.T) {
 	p := &Profile{
-		SonnetModel: "model-sonnet",
-		OpusModel:   "",
-		HaikuModel:  "",
+		SonnetModel:   "model-sonnet",
+		OpusModel:     "",
+		HaikuModel:    "",
 		SubagentModel: "",
 	}
 
