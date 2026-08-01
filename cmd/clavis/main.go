@@ -233,7 +233,7 @@ func runRemove(args []string) {
 	}
 
 	name := args[0]
-	force := len(args) > 1 && args[1] == "--force"
+	force := len(args) > 1 && (args[1] == "--force" || args[1] == "-f")
 
 	if !profile.Exists(name) {
 		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Profile %q not found. Run %s to see all profiles.", name, ui.CommandStyle.Render("clavis list"))))
