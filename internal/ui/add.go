@@ -62,7 +62,6 @@ func AddProfile() (*AddResult, error) {
 		return nil, err
 	}
 
-	// Fetch models live
 	fmt.Println(DimStyle.Render("  Fetching models from " + prov.DisplayName + "..."))
 	models, err := provider.FetchModels(baseURL, prov.ModelsEndpoint(), apiKey)
 	if err != nil {
@@ -73,7 +72,6 @@ func AddProfile() (*AddResult, error) {
 		fmt.Println(Success(fmt.Sprintf("Found %d models", len(models))))
 	}
 
-	// Alias — optional, auto-generated
 	autoName := profile.NextAlias(providerID)
 	var alias string
 	if err := huh.NewForm(huh.NewGroup(
@@ -91,50 +89,46 @@ func AddProfile() (*AddResult, error) {
 	}
 	if alias == "" { alias = autoName }
 
-	// Model selection: simple or detailed?
 	opusModel, sonnetModel, haikuModel, subagentModel, err := selectModels(models)
 	if err != nil {
 		return nil, err
 	}
 
-	// Options: advanced or default?
-	disableTraffic, disableBetas, minimalMode, disableAttribution :=
-		selectOptions(prov.ID != "anthropic")
+	// Smart defaults — never shown to users.
+	// Telemetry, betas, attribution auto-disabled for 3P providers.
+	is3P := prov.ID != "anthropic"
+	noTraffic := is3P
+	noBetas := is3P
+	noAttr := is3P
 
 	return &AddResult{
 		Profile: &profile.Profile{
 			Name: alias, ProviderID: providerID, BaseURL: baseURL,
 			OpusModel: opusModel, SonnetModel: sonnetModel,
 			HaikuModel: haikuModel, SubagentModel: subagentModel,
-			DisableNonessentialTraffic: &disableTraffic,
-			DisableExperimentalBetas:   &disableBetas,
-			DisableAttribution:         &disableAttribution,
-			MinimalMode:                minimalMode,
+			DisableNonessentialTraffic: &noTraffic,
+			DisableExperimentalBetas:   &noBetas,
+			DisableAttribution:         &noAttr,
 		},
 		APIKey: apiKey,
 	}, nil
 }
 
-// selectModels asks simple-vs-detailed, then picks models.
 func selectModels(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
 	if len(models) == 0 {
 		return selectTiersFreeText()
 	}
 
-	// Simple: one model for everything.
-	// Detailed: per-tier selection.
 	var simple bool
 	if err := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Simple model setup?").
-			Description("One model for all tiers. Choose 'No' to pick per-tier models.").
+			Description("One model for all tiers. Choose 'No' to pick per-tier.").
 			Affirmative("Yes, one model").Negative("No, per-tier").Value(&simple),
 	)).Run(); err != nil {
 		return "", "", "", "", err
 	}
 
-	if simple {
-		return selectOneModel(models)
-	}
+	if simple { return selectOneModel(models) }
 	return selectTiersDetailed(models)
 }
 
@@ -199,37 +193,6 @@ func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, suba
 		return "", "", "", "", err
 	}
 	return opus, sonnet, haiku, subagent, nil
-}
-
-// selectOptions asks whether to configure advanced options.
-func selectOptions(is3P bool) (noTraffic, noBetas, minimal, noAttr bool) {
-	noTraffic = is3P
-	noBetas = is3P
-
-	var showAdvanced bool
-	if err := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().Title("Configure advanced options?").
-			Description("Telemetry, betas, bare mode, attribution. Defaults are fine for most providers.").
-			Affirmative("Yes, customize").Negative("No, use defaults").Value(&showAdvanced),
-	)).Run(); err != nil {
-		return
-	}
-	if !showAdvanced {
-		return
-	}
-
-	huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().Title("Disable nonessential traffic").
-			Affirmative("Yes").Negative("No").Value(&noTraffic),
-		huh.NewConfirm().Title("Disable experimental betas").
-			Affirmative("Yes").Negative("No").Value(&noBetas),
-		huh.NewConfirm().Title("Minimal mode (--bare)").
-			Affirmative("Yes").Negative("No").Value(&minimal),
-		huh.NewConfirm().Title("Disable attribution header").
-			Affirmative("Yes").Negative("No").Value(&noAttr),
-	)).Run()
-
-	return
 }
 
 func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {

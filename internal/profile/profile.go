@@ -91,7 +91,7 @@ func (p *Profile) ShouldDisableAttribution() bool {
 	if p.DisableAttribution != nil {
 		return *p.DisableAttribution
 	}
-	return false
+	return p.ProviderID != "anthropic"
 }
 
 // Validate checks profile invariants that prevent silent launch failures.
