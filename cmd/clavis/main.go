@@ -14,6 +14,16 @@ import (
 
 var Version = "dev" // set by ldflags -X at build time
 
+// hasFlag reports whether args contains the given flag in any position.
+func hasFlag(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
 // requireTTY exits with a clear, agent-friendly error when an interactive
 // command is run without a terminal (e.g. under Hermes/OpenClaw). `hint` names
 // the headless alternative. Exit code 2 matches the "usage" convention.
@@ -42,7 +52,7 @@ func main() {
 	case "add":
 		runAddOrHeadless(args[1:])
 	case "list", "ls":
-		if len(args) > 1 && args[1] == "--json" {
+		if hasFlag(args[1:], "--json") {
 			runListJSON()
 			break
 		}

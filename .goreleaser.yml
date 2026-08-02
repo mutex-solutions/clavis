@@ -41,6 +41,35 @@ changelog:
       - "^ci:"
       - "^chore:"
 
+# Homebrew tap: goreleaser generates the cask and pushes it to a separate repo
+# (dinhlongviolin1/homebrew-tap) so users can `brew install
+# dinhlongviolin1/tap/clavis`. Requires a HOMEBREW_TAP_TOKEN secret (a PAT with
+# write access to the tap repo). skip_upload is gated on that env var, so the
+# release NEVER breaks when it's absent — it just doesn't publish the cask.
+# Add the token + create the homebrew-tap repo to auto-activate. See RELEASING.md.
+homebrew_casks:
+  - name: clavis
+    skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
+    repository:
+      owner: dinhlongviolin1
+      name: homebrew-tap
+      token: '{{ envOrDefault "HOMEBREW_TAP_TOKEN" "" }}'
+    homepage: "https://github.com/dinhlongviolin1/clavis"
+    description: "Claude Code provider manager — one binary, many backends"
+
+# Scoop bucket for Windows users: same idea, pushes a manifest to
+# dinhlongviolin1/scoop-bucket. Gated on SCOOP_BUCKET_TOKEN the same way.
+scoops:
+  - name: clavis
+    skip_upload: '{{ if isEnvSet "SCOOP_BUCKET_TOKEN" }}false{{ else }}true{{ end }}'
+    repository:
+      owner: dinhlongviolin1
+      name: scoop-bucket
+      token: '{{ envOrDefault "SCOOP_BUCKET_TOKEN" "" }}'
+    homepage: "https://github.com/dinhlongviolin1/clavis"
+    description: "Claude Code provider manager — one binary, many backends"
+    license: MIT
+
 release:
   draft: false
   prerelease: auto

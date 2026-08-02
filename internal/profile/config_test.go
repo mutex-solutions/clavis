@@ -26,3 +26,17 @@ func TestConfigDir_Isolated(t *testing.T) {
 		t.Errorf("isolated ConfigDir = %q, want suffix .clavis/profiles/myprof", dir)
 	}
 }
+
+func TestDir_ClavisHomeOverride(t *testing.T) {
+	t.Setenv("CLAVIS_HOME", "/custom/clavis/root")
+	if got := Dir(); got != "/custom/clavis/root" {
+		t.Errorf("Dir() = %q, want the CLAVIS_HOME override", got)
+	}
+}
+
+func TestDir_DefaultWhenNoOverride(t *testing.T) {
+	t.Setenv("CLAVIS_HOME", "")
+	if got := Dir(); got == "/custom/clavis/root" {
+		t.Error("Dir() should fall back to ~/.clavis when CLAVIS_HOME is unset")
+	}
+}

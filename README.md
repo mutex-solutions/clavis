@@ -63,6 +63,12 @@ memory, settings) intact while routing to whichever provider you choose.
 curl -fsSL https://raw.githubusercontent.com/dinhlongviolin1/clavis/main/install.sh | sh
 ```
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew install dinhlongviolin1/tap/clavis
+```
+
 ### Windows (PowerShell)
 
 ```powershell
@@ -146,6 +152,8 @@ clavis list
 | `clavis providers` | Show built-in provider catalog (`--json`) |
 | `clavis validate <name>` | Ping a profile's provider |
 | `clavis test <name>` | Full health check: config, key, claude, every model tier |
+| `clavis get <name>` | Show a profile's full config (`--json`) |
+| `clavis env <name>` | Print the env vars clavis sets (for agents) |
 | `clavis update` | Update clavis to the latest release |
 | `clavis completion <shell>` | Generate bash/zsh/fish completion |
 | `clavis version` | Print version |
@@ -177,24 +185,42 @@ give it the base URL and key.
 
 ## For agents & CI
 
-Clavis is scriptable end-to-end. The headless `add` accepts every field as a
-flag, emits JSON, and uses stable exit codes:
+Clavis is designed to run headlessly under agent runners (Hermes, OpenClaw,
+cron, CI) with **no interactive terminal**. Every interactive flow has a
+flag-driven equivalent; nothing blocks on a prompt.
 
 ```bash
-clavis add --json \
-  --provider deepseek \
-  --model deepseek-chat \
-  --reasoning-model deepseek-reasoner \
-  --key-file ~/.secrets/deepseek \
-  --alias ds
+# Create a profile — key from stdin/env/file so it never lands in `ps`/history.
+echo "$DEEPSEEK_KEY" | clavis add --json --key-stdin \
+  --provider deepseek --model deepseek-chat \
+  --reasoning-model deepseek-reasoner --alias ds --overwrite
 # → {"ok":true,"profile":"ds","path":"/home/you/.clavis/profiles/ds"}
 
-clavis test ds --json
-# → {"ok":true,"profile":"ds","checks":[...]}
+clavis get ds --json      # read it back (resolved tiers, key_present, no secret)
+clavis test ds --json     # health check: config, key, claude, every model tier
+clavis ds -- -p "2+2?"    # launch headless; banner goes to stderr, answer to stdout
 ```
 
-Exit codes for `add`: `0` saved · `2` bad/missing flag · `3` unknown provider /
-base URL · `4` name exists · `5` key validation failed · `6` save failed.
+Two integration styles:
+
+- **Let clavis launch claude:** `clavis <profile> -- -p "..."` — the banner is
+  printed to **stderr** (auto-suppressed when stdout isn't a TTY, or with
+  `--quiet`), so stdout carries only claude's answer.
+- **Own the process yourself:** `eval "$(clavis env <profile> --reveal-key)"`
+  then run your own `claude`. `clavis env` prints exactly the vars clavis would
+  set — nothing else touches your environment.
+
+Guarantees for scripting:
+
+- **No TTY, no surprise.** Interactive commands run without a terminal exit `2`
+  with a clear message — never a silent success.
+- **Valid JSON always.** `--json` outputs are `json.Marshal`ed; `list --json`
+  is `[]` (not `null`) when empty.
+- **Stable exit codes:** `0` ok · `2` bad/missing flag · `3` provider/base-URL ·
+  `4` name exists · `5` validation failed · `6` save failed · `7` not found ·
+  `8` claude not installed.
+- **`CLAVIS_HOME`** overrides the state dir (`~/.clavis`) for containers/service
+  users.
 
 See `clavis add --help` for the full flag reference.
 

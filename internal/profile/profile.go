@@ -163,8 +163,13 @@ func ValidName(name string) error {
 
 // --- Storage ---
 
-// Dir returns the clavis root directory (~/.clavis).
+// Dir returns the clavis root directory. Honors CLAVIS_HOME so agents,
+// containers, and service users can point clavis at an explicit state dir;
+// otherwise defaults to ~/.clavis.
 func Dir() string {
+	if h := os.Getenv("CLAVIS_HOME"); h != "" {
+		return h
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		// Fallback: this should never happen on a normal system.
