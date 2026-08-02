@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -43,8 +44,11 @@ func runAddOrHeadless(args []string) {
 	subagentModel := fs.String("subagent-model", "", "Subagent model (falls back to --model)")
 	baseURL := fs.String("base-url", "", "Base URL (required only for --provider custom)")
 	alias := fs.String("alias", "", "Profile name (auto-generated if empty)")
-	key := fs.String("key", "", "API key (insecure on shared hosts — prefer --key-file)")
-	keyFile := fs.String("key-file", "", "Read the API key from this file (secure)")
+	key := fs.String("key", "", "API key (insecure on shared hosts — prefer --key-file/--key-env)")
+	keyFile := fs.String("key-file", "", "Read the API key from this file")
+	keyEnv := fs.String("key-env", "", "Read the API key from this environment variable")
+	keyStdin := fs.Bool("key-stdin", false, "Read the API key from stdin")
+	overwrite := fs.Bool("overwrite", false, "Replace an existing profile of the same name (upsert)")
 	contextWindow := fs.Int("context-window", 0, "Context window size in tokens")
 	compactPct := fs.Int("compact-pct", 0, "Auto-compact threshold, 1-100 (%)")
 	maxTokens := fs.Int("max-tokens", 0, "Max output tokens per request")
@@ -94,8 +98,22 @@ func runAddOrHeadless(args []string) {
 		fail(exitUsage, "model", "--model is required")
 	}
 
+	// Resolve the key from exactly one source, in order of increasing safety.
+	// --key-env and --key-stdin keep the secret out of argv (ps/history).
 	apiKey := *key
-	if *keyFile != "" {
+	switch {
+	case *keyStdin:
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, 1<<16))
+		if err != nil {
+			fail(exitUsage, "key-stdin", fmt.Sprintf("cannot read key from stdin: %v", err))
+		}
+		apiKey = strings.TrimSpace(string(data))
+	case *keyEnv != "":
+		apiKey = strings.TrimSpace(os.Getenv(*keyEnv))
+		if apiKey == "" {
+			fail(exitUsage, "key-env", fmt.Sprintf("environment variable %q is empty or unset", *keyEnv))
+		}
+	case *keyFile != "":
 		data, err := os.ReadFile(*keyFile)
 		if err != nil {
 			fail(exitUsage, "key-file", fmt.Sprintf("cannot read key file: %v", err))
@@ -103,7 +121,7 @@ func runAddOrHeadless(args []string) {
 		apiKey = strings.TrimSpace(string(data))
 	}
 	if apiKey == "" {
-		fail(exitUsage, "key", "--key or --key-file is required")
+		fail(exitUsage, "key", "an API key is required (--key, --key-file, --key-env, or --key-stdin)")
 	}
 
 	prov, err := provider.Get(*providerID)
@@ -126,8 +144,15 @@ func runAddOrHeadless(args []string) {
 	if err := profile.ValidName(name); err != nil {
 		fail(exitUsage, "alias", err.Error())
 	}
+	var createdAt string
 	if profile.Exists(name) {
-		fail(exitExists, "alias", fmt.Sprintf("profile %q already exists", name))
+		if !*overwrite {
+			fail(exitExists, "alias", fmt.Sprintf("profile %q already exists (use --overwrite to replace)", name))
+		}
+		// Preserve the original creation time on an upsert.
+		if existing, e := profile.Load(name); e == nil {
+			createdAt = existing.CreatedAt
+		}
 	}
 
 	noTraffic := prov.ID != "anthropic"
@@ -148,6 +173,7 @@ func runAddOrHeadless(args []string) {
 		Name:                       name,
 		ProviderID:                 *providerID,
 		BaseURL:                    url,
+		CreatedAt:                  createdAt, // preserved on --overwrite, empty otherwise
 		SonnetModel:                *model,
 		OpusModel:                  *reasoningModel,
 		HaikuModel:                 *fastModel,
@@ -212,7 +238,11 @@ Headless (for agents/CI — pass any flag to trigger this mode):
 Required:
   --provider <id>    Provider ID. See: clavis providers [--json]
   --model <id>       Primary model (the daily driver)
-  --key <k> | --key-file <path>   API key (prefer --key-file)
+  API key from one of (most→least secure):
+    --key-stdin      read from stdin
+    --key-env <VAR>  read from an environment variable
+    --key-file <path> read from a file
+    --key <k>        literal (visible in ps/history — avoid on shared hosts)
 
 Model tiers (all optional, each falls back to --model):
   --reasoning-model <id>   Hard-reasoning tier
@@ -229,6 +259,7 @@ Common options:
   --headers "K: v\nK2: v2"   Extra headers
   --isolated         Give this profile its own CLAUDE_CONFIG_DIR
                      (default: share your ~/.claude — MCP, agents, memory)
+  --overwrite        Replace an existing profile of the same name (upsert)
   --bare             Minimal mode (fewer env vars)
   --json             Machine-readable result on stdout; errors as JSON on stderr
 

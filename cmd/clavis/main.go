@@ -66,6 +66,8 @@ func main() {
 		runTest(args[1:])
 	case "env":
 		runEnv(args[1:])
+	case "get", "show", "info":
+		runGet(args[1:])
 	case "update", "upgrade", "self-update":
 		runUpdate(args[1:])
 	case "start":
@@ -100,6 +102,7 @@ Usage:
   clavis providers            Show provider catalog
   clavis validate <name>      Ping a profile's provider
   clavis test <name>          Check a profile is set up and runnable
+  clavis get <name>           Show a profile's full config (--json)
   clavis env <name>           Print the env vars clavis sets (for agents)
   clavis update               Update clavis to the latest release
   clavis version              Print version

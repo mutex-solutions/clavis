@@ -20,19 +20,19 @@ func runValidate(args []string) {
 	p, err := profile.Load(name)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, ui.Error(err.Error()))
-		os.Exit(1)
+		os.Exit(exitNotFound)
 	}
 
 	apiKey, err := profile.LoadKey(name)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, ui.Error(err.Error()))
-		os.Exit(1)
+		os.Exit(exitNotFound)
 	}
 
 	fmt.Printf("  Pinging %s (%s)... ", p.ProviderID, p.BaseURL)
 	if err := provider.Ping(p.BaseURL, apiKey, p.SonnetModel); err != nil {
 		fmt.Println(ui.Error(err.Error()))
-		os.Exit(1)
+		os.Exit(exitValidation)
 	}
 	fmt.Println(ui.Success("OK"))
 }
