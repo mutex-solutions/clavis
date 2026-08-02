@@ -38,9 +38,12 @@ func main() {
 	case "remove", "rm":
 		runRemove(args[1:])
 	case "completion":
-		if len(args) > 1 && args[1] == "install" {
+		switch {
+		case len(args) > 1 && args[1] == "install":
 			runInstallCompletion(args[2:])
-		} else {
+		case len(args) > 1 && (args[1] == "uninstall" || args[1] == "remove"):
+			runUninstallCompletion(args[2:])
+		default:
 			runCompletion(args[1:])
 		}
 	case "providers":
@@ -85,7 +88,9 @@ Usage:
   clavis test <name>          Check a profile is set up and runnable
   clavis update               Update clavis to the latest release
   clavis version              Print version
-  clavis completion <shell>   Generate shell completion script
+  clavis completion <shell>            Print a completion script
+  clavis completion install <shell>    Install it (bash|zsh|fish)
+  clavis completion uninstall [shell]  Remove installed completion(s)
 
 Run 'clavis add --help' for headless/agent flags.
 

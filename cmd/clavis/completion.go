@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 func runCompletion(args []string) {
@@ -109,50 +108,139 @@ complete -c clavis -n "__fish_seen_subcommand_from remove rm validate test start
     -a "(__fish_clavis_profiles)" -d "Profile"
 `
 
-// InstallCompletion writes the completion script to the appropriate location.
+// completionSpec is the single source of truth for where a shell's completion
+// file lives and what goes in it. Install, uninstall, and the update-time
+// refresh all resolve through here so they can never drift apart.
+type completionSpec struct {
+	shell  string
+	path   string // absolute target path (OS-correct via filepath.Join)
+	script string
+}
+
+// supportedShells lists the shells clavis can install completion for. These are
+// the same on Linux, macOS, and Windows (under Git Bash / WSL / MSYS).
+func supportedShells() []string { return []string{"bash", "zsh", "fish"} }
+
+// completionSpecFor resolves the install target for a shell. The home dir is
+// resolved with os.UserHomeDir(), so paths are correct on every OS.
+func completionSpecFor(shell string) (completionSpec, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return completionSpec{}, fmt.Errorf("cannot resolve home directory: %w", err)
+	}
+	switch shell {
+	case "bash":
+		return completionSpec{shell, filepath.Join(home, ".bash_completion.d", "clavis"), bashCompletion}, nil
+	case "zsh":
+		return completionSpec{shell, filepath.Join(home, ".zfunc", "_clavis"), zshCompletion}, nil
+	case "fish":
+		return completionSpec{shell, filepath.Join(home, ".config", "fish", "completions", "clavis.fish"), fishCompletion}, nil
+	default:
+		return completionSpec{}, fmt.Errorf("unknown shell %q (supported: bash, zsh, fish)", shell)
+	}
+}
+
+// runInstallCompletion handles `clavis completion install <shell>`.
 func runInstallCompletion(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: clavis completion install bash|zsh|fish")
 		os.Exit(1)
 	}
-
-	var script, target string
-	home, _ := os.UserHomeDir()
-
-	switch args[0] {
-	case "bash":
-		script = bashCompletion
-		target = filepath.Join(home, ".bash_completion.d", "clavis")
-	case "zsh":
-		script = zshCompletion
-		target = filepath.Join(home, ".zfunc", "_clavis")
-	case "fish":
-		script = fishCompletion
-		target = filepath.Join(home, ".config", "fish", "completions", "clavis.fish")
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown shell: %s. Supported: bash, zsh, fish\n", args[0])
+	spec, err := completionSpecFor(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	os.MkdirAll(filepath.Dir(target), 0755)
-	if err := os.WriteFile(target, []byte(script), 0644); err != nil {
+	if err := writeCompletion(spec); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write completion script: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Wrote completion script to %s\n", target)
+	fmt.Printf("Wrote %s completion to %s\n", spec.shell, spec.path)
 	fmt.Println()
 	fmt.Println("To enable immediately:")
-	switch args[0] {
+	switch spec.shell {
 	case "zsh":
-		fmt.Printf("  autoload -Uz compinit && compinit")
-		if !strings.Contains(os.Getenv("fpath"), filepath.Dir(target)) {
-			fmt.Printf("\n  fpath=(%s $fpath)", filepath.Dir(target))
-		}
-		fmt.Println()
+		// If clavis was previously installed and the file changed, zsh's cache
+		// (~/.zcompdump) can still point at the old definition — clear it.
+		fmt.Printf("  fpath=(%s $fpath)\n", filepath.Dir(spec.path))
+		fmt.Println("  rm -f ~/.zcompdump* && autoload -Uz compinit && compinit")
 	case "bash":
-		fmt.Printf("  source %s\n", target)
+		fmt.Printf("  source %s\n", spec.path)
 	case "fish":
 		fmt.Println("  Restart your shell or run: exec fish")
 	}
+}
+
+// runUninstallCompletion handles `clavis completion uninstall [shell]`. With no
+// shell it removes every installed completion file it can find.
+func runUninstallCompletion(args []string) {
+	shells := args
+	if len(shells) == 0 {
+		shells = supportedShells()
+	}
+
+	removedZsh := false
+	removedAny := false
+	for _, sh := range shells {
+		spec, err := completionSpecFor(sh)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if _, statErr := os.Stat(spec.path); statErr != nil {
+			continue // nothing installed for this shell
+		}
+		if err := os.Remove(spec.path); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to remove %s: %v\n", spec.path, err)
+			os.Exit(1)
+		}
+		fmt.Printf("Removed %s completion (%s)\n", spec.shell, spec.path)
+		removedAny = true
+		if spec.shell == "zsh" {
+			removedZsh = true
+		}
+	}
+
+	if !removedAny {
+		fmt.Println("No installed completions found.")
+		return
+	}
+	if removedZsh {
+		// This is the exact gotcha: a deleted _clavis with a stale zcompdump
+		// makes zsh print "function definition file not found" on <Tab>.
+		fmt.Println()
+		fmt.Println("zsh caches completions — clear it so the old entry doesn't linger:")
+		fmt.Println("  rm -f ~/.zcompdump* && exec zsh")
+	}
+}
+
+// refreshInstalledCompletions rewrites any completion files that are already
+// installed, so new subcommands show up after an update. It never installs a
+// file that wasn't there and never errors the caller — it's best-effort polish.
+// Returns the shells whose completion was refreshed.
+func refreshInstalledCompletions() []string {
+	var refreshed []string
+	for _, sh := range supportedShells() {
+		spec, err := completionSpecFor(sh)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(spec.path); err != nil {
+			continue // not installed — leave it alone
+		}
+		if err := writeCompletion(spec); err != nil {
+			continue // unwritable — skip silently
+		}
+		refreshed = append(refreshed, spec.shell)
+	}
+	return refreshed
+}
+
+func writeCompletion(spec completionSpec) error {
+	if err := os.MkdirAll(filepath.Dir(spec.path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(spec.path, []byte(spec.script), 0o644)
 }

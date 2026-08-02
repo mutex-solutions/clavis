@@ -151,6 +151,19 @@ Usage:
 	}
 
 	fmt.Println(ui.Success(fmt.Sprintf("Updated to %s", latest)))
+
+	// Refresh any already-installed shell completions so new subcommands show
+	// up. Best-effort: does nothing if completions were never installed.
+	if shells := refreshInstalledCompletions(); len(shells) > 0 {
+		fmt.Println(ui.DimStyle.Render("  Refreshed shell completions: " + strings.Join(shells, ", ")))
+		// A zsh completion whose content changed needs its cache cleared.
+		for _, s := range shells {
+			if s == "zsh" {
+				fmt.Println(ui.DimStyle.Render("  For zsh, run: rm -f ~/.zcompdump* && exec zsh"))
+				break
+			}
+		}
+	}
 }
 
 // latestRelease fetches the newest published (non-prerelease) release.

@@ -75,6 +75,20 @@ install -m 0755 "$tmp/$BINARY" "$install_dir/$BINARY" 2>/dev/null \
 
 info "Installed to $install_dir/$BINARY"
 
+# --- Refresh already-installed shell completions ---
+# If a previous install set up completions, rewrite them from the new binary so
+# new subcommands work. We only touch shells that already have a completion file
+# (never force-install), matching the paths `clavis completion install` uses.
+clavis_bin="$install_dir/$BINARY"
+refreshed=""
+[ -f "$HOME/.bash_completion.d/clavis" ]              && { "$clavis_bin" completion install bash >/dev/null 2>&1 && refreshed="$refreshed bash"; }
+[ -f "$HOME/.zfunc/_clavis" ]                          && { "$clavis_bin" completion install zsh  >/dev/null 2>&1 && refreshed="$refreshed zsh"; }
+[ -f "$HOME/.config/fish/completions/clavis.fish" ]   && { "$clavis_bin" completion install fish >/dev/null 2>&1 && refreshed="$refreshed fish"; }
+if [ -n "$refreshed" ]; then
+  info "Refreshed shell completions:$refreshed"
+  case "$refreshed" in *zsh*) info "For zsh, run: rm -f ~/.zcompdump* && exec zsh" ;; esac
+fi
+
 # --- PATH hint ---
 case ":$PATH:" in
   *":$install_dir:"*) ;;
@@ -82,3 +96,4 @@ case ":$PATH:" in
 esac
 
 printf '\n  Run "clavis add" to create your first profile.\n'
+printf '  Enable tab-completion: clavis completion install <bash|zsh|fish>\n'

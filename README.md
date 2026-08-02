@@ -91,6 +91,28 @@ clavis update            # install the latest release
 clavis update --check    # just report whether one is available
 ```
 
+`clavis update` also refreshes any shell completions you've installed, so new
+commands tab-complete after upgrading.
+
+### Shell completion
+
+```bash
+clavis completion install zsh     # or bash / fish
+```
+
+### Uninstall
+
+```bash
+clavis completion uninstall       # remove installed completions (all shells)
+rm "$(command -v clavis)"         # remove the binary
+rm -rf ~/.clavis                  # optional: remove profiles + saved keys
+```
+
+> zsh caches completions in `~/.zcompdump`. After removing a completion, run
+> `rm -f ~/.zcompdump* && exec zsh` so the old entry doesn't linger (otherwise
+> `clavis<Tab>` may print "function definition file not found"). `clavis
+> completion uninstall` reminds you of this.
+
 ## Quick Start
 
 ```bash
