@@ -31,7 +31,15 @@ func FetchModels(baseURL, modelsURL, apiKey string) ([]ModelInfo, error) {
 
 func modelListURLs(baseURL string) []string {
 	cleaned := strings.TrimRight(baseURL, "/")
-	candidates := []string{cleaned + "/v1/models"}
+	var candidates []string
+
+	// If the URL already points at a models endpoint (e.g. the user pasted a
+	// full ".../compatible-mode/v1/models"), try it verbatim first.
+	if strings.HasSuffix(cleaned, "/models") {
+		candidates = append(candidates, cleaned)
+	}
+
+	candidates = append(candidates, cleaned+"/v1/models")
 
 	if u, err := url.Parse(cleaned); err == nil && u.Path != "" && u.Path != "/" {
 		u.Path = "/v1/models"

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -319,28 +320,73 @@ func wizardKey(providerID, baseURL string) (outURL, apiKey string, err error) {
 }
 
 func wizardModels(baseURL, modelsURL, apiKey string) ([]provider.ModelInfo, error) {
-	res, err := runWithSpinner("Fetching models…", func() (any, error) {
-		return provider.FetchModels(baseURL, modelsURL, apiKey)
-	})
-	var models []provider.ModelInfo
-	if res != nil {
-		models, _ = res.([]provider.ModelInfo)
+	tryFetch := func(mURL string) ([]provider.ModelInfo, error) {
+		res, err := runWithSpinner("Fetching models…", func() (any, error) {
+			return provider.FetchModels(baseURL, mURL, apiKey)
+		})
+		var models []provider.ModelInfo
+		if res != nil {
+			models, _ = res.([]provider.ModelInfo)
+		}
+		return models, err
 	}
-	if err != nil {
-		// The next wizard step clears the screen, so pause on a confirm to let
-		// the user read why the live list is unavailable before manual entry.
+
+	models, err := tryFetch(modelsURL)
+	if err == nil {
+		return models, nil
+	}
+
+	// Fetch failed. Offer to point clavis at a custom model-list URL (the
+	// messages endpoint and the /models endpoint often differ — e.g. Alibaba
+	// MaaS serves models at /compatible-mode/v1/models), fall back to typing
+	// model IDs by hand, or go back.
+	for {
 		fmt.Println(Warn(fmt.Sprintf("Could not fetch models: %v", err)))
-		var proceed bool
+
+		const (
+			optURL    = "url"
+			optManual = "manual"
+			optBack   = "back"
+		)
+		choice := optURL
 		if e := runForm(huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().Title("Enter model IDs manually?").
-				Description("The provider's model list couldn't be fetched. esc = go back to the key.").
-				Affirmative("Yes, type them").Negative("Go back").Value(&proceed),
-		))); e != nil || !proceed {
+			huh.NewSelect[string]().Title("Model list couldn't be fetched").
+				Description("The models endpoint may differ from the base URL. esc = go back.").
+				Options(
+					huh.NewOption("Provide a model-list URL and retry", optURL),
+					huh.NewOption("Type model IDs manually", optManual),
+					huh.NewOption("Go back", optBack),
+				).Value(&choice),
+		))); e != nil || choice == optBack {
 			return nil, errBack
 		}
-		return nil, nil
+
+		switch choice {
+		case optManual:
+			return nil, nil // signal manual entry downstream
+		case optURL:
+			var mURL string
+			if e := runForm(huh.NewForm(huh.NewGroup(
+				huh.NewInput().Title("Model-list URL").
+					Description("Full URL to the model list, e.g. https://…/compatible-mode/v1/models").
+					Placeholder("https://host/compatible-mode/v1/models").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return fmt.Errorf("URL is required")
+						}
+						return nil
+					}).Value(&mURL),
+			))); e != nil {
+				continue // esc on the URL input → back to the choice menu
+			}
+			models, err = tryFetch(strings.TrimSpace(mURL))
+			if err == nil {
+				fmt.Println(Success(fmt.Sprintf("Found %d models", len(models))))
+				return models, nil
+			}
+			// fetch failed again → loop shows the error and the menu once more
+		}
 	}
-	return models, nil
 }
 
 func wizardAlias(providerID string) (string, error) {
