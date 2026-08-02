@@ -91,8 +91,11 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 }
 
 // buildEnv constructs the full environment for the claude child process.
-func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
-	// Build the set of vars we will explicitly set.
+// EnvVars returns the environment variables clavis sets for a profile — just
+// the clavis-managed keys, not the inherited environment. Callers that want to
+// run claude themselves (e.g. an agent runner) can apply these directly.
+// The API key is included as ANTHROPIC_AUTH_TOKEN.
+func EnvVars(p *profile.Profile, apiKey string) map[string]string {
 	set := map[string]string{
 		"ANTHROPIC_BASE_URL":             p.BaseURL,
 		"ANTHROPIC_AUTH_TOKEN":           apiKey,
@@ -148,6 +151,11 @@ func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
 		}
 		set["ANTHROPIC_CUSTOM_HEADERS"] = strings.Join(parts, "\n")
 	}
+	return set
+}
+
+func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
+	set := EnvVars(p, apiKey)
 
 	// Vars to always strip (auth leaks), plus everything we're about to set
 	// (prevents duplicates — on Linux getenv returns the FIRST match).

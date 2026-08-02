@@ -12,13 +12,15 @@ import (
 	"github.com/dinhlongviolin1/clavis/internal/ui"
 )
 
-// Exit codes are stable so agents can branch on them.
+// Exit codes are stable across all commands so agents can branch on them.
 const (
 	exitUsage      = 2 // bad flags / missing required flag
 	exitProvider   = 3 // unknown provider or bad base URL
 	exitExists     = 4 // profile name already taken
-	exitValidation = 5 // key failed the provider ping
+	exitValidation = 5 // key/health check failed
 	exitSave       = 6 // couldn't write the profile to disk
+	exitNotFound   = 7 // named profile does not exist / not loadable
+	exitNoClaude   = 8 // the claude binary isn't installed / on PATH
 )
 
 // addResult is the machine-readable result emitted with --json.
@@ -63,8 +65,9 @@ func runAddOrHeadless(args []string) {
 		}
 	}
 
-	// No flags at all → launch the interactive wizard.
+	// No flags at all → launch the interactive wizard (requires a terminal).
 	if !hasAnyFlag(args) {
+		requireTTY("clavis add --provider <id> --model <id> --key <k> --json")
 		runAdd()
 		return
 	}

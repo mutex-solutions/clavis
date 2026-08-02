@@ -14,6 +14,18 @@ import (
 
 var Version = "dev" // set by ldflags -X at build time
 
+// requireTTY exits with a clear, agent-friendly error when an interactive
+// command is run without a terminal (e.g. under Hermes/OpenClaw). `hint` names
+// the headless alternative. Exit code 2 matches the "usage" convention.
+func requireTTY(hint string) {
+	if ui.IsInteractive() {
+		return
+	}
+	fmt.Fprintln(os.Stderr, ui.Error("no terminal detected — this command is interactive."))
+	fmt.Fprintln(os.Stderr, ui.DimStyle.Render("  For headless/agent use: "+hint))
+	os.Exit(2)
+}
+
 func main() {
 	args := os.Args[1:]
 
@@ -52,6 +64,8 @@ func main() {
 		runValidate(args[1:])
 	case "test":
 		runTest(args[1:])
+	case "env":
+		runEnv(args[1:])
 	case "update", "upgrade", "self-update":
 		runUpdate(args[1:])
 	case "start":
@@ -86,6 +100,7 @@ Usage:
   clavis providers            Show provider catalog
   clavis validate <name>      Ping a profile's provider
   clavis test <name>          Check a profile is set up and runnable
+  clavis env <name>           Print the env vars clavis sets (for agents)
   clavis update               Update clavis to the latest release
   clavis version              Print version
   clavis completion <shell>            Print a completion script
@@ -104,6 +119,8 @@ Examples:
 
 // runSelector shows the inline profile picker, then launches.
 func runSelector(extraArgs []string) {
+	requireTTY("clavis <profile> [-- claude args]  (see: clavis list)")
+
 	profiles, err := profile.List()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Failed to list profiles: %v", err)))
@@ -154,14 +171,20 @@ func launchProfile(p *profile.Profile, extraArgs []string) {
 
 	// Intercept clavis-level launch overrides that appear *before* a "--".
 	// Everything after "--" (or once we hit an unknown flag) goes to claude.
-	extraArgs = applyLaunchOverrides(p, extraArgs)
+	quiet := false
+	extraArgs = applyLaunchOverrides(p, extraArgs, &quiet)
 
 	// Strip leading "--" if present
 	if len(extraArgs) > 0 && extraArgs[0] == "--" {
 		extraArgs = extraArgs[1:]
 	}
 
-	printLaunchBanner(p, claude.PlanFor(p, extraArgs))
+	// The banner is human chrome. Print it to stderr (never stdout, which
+	// carries claude's answer for agents parsing `-p` output), and suppress it
+	// entirely when asked or when stdout isn't a terminal.
+	if !quiet && os.Getenv("CLAVIS_QUIET") == "" && ui.StdoutIsTTY() {
+		printLaunchBanner(p, claude.PlanFor(p, extraArgs))
+	}
 
 	code, err := claude.Launch(p, apiKey, extraArgs)
 	if err != nil {
@@ -175,7 +198,7 @@ func launchProfile(p *profile.Profile, extraArgs []string) {
 // args (mutating the profile in memory only, not on disk) and returns the
 // remaining args to forward to claude. Scanning stops at the first "--" or the
 // first arg clavis doesn't recognise, so claude's own flags pass through intact.
-func applyLaunchOverrides(p *profile.Profile, args []string) []string {
+func applyLaunchOverrides(p *profile.Profile, args []string, quiet *bool) []string {
 	i := 0
 	for i < len(args) {
 		switch args[i] {
@@ -183,6 +206,8 @@ func applyLaunchOverrides(p *profile.Profile, args []string) []string {
 			p.IsolatedConfig = true
 		case "--shared":
 			p.IsolatedConfig = false
+		case "--quiet", "-q":
+			*quiet = true
 		case "--":
 			return args[i:] // reached the explicit separator
 		default:
@@ -197,20 +222,22 @@ func applyLaunchOverrides(p *profile.Profile, args []string) []string {
 // claude: which profile/provider/model, which config dir, and — split out
 // clearly — which flags clavis applied vs which are forwarded to claude.
 func printLaunchBanner(p *profile.Profile, plan claude.Plan) {
-	fmt.Println()
-	fmt.Printf("  %s %s  %s\n",
+	// Always to stderr: stdout carries claude's answer for agents parsing `-p`.
+	w := os.Stderr
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %s %s  %s\n",
 		ui.TitleStyle.Render("clavis"),
 		ui.CommandStyle.Render(p.Name),
 		ui.DimStyle.Render("→ "+plan.Provider))
-	fmt.Printf("  %s %s\n", ui.DimStyle.Render("model  "), plan.Model)
-	fmt.Printf("  %s %s\n", ui.DimStyle.Render("url    "), plan.BaseURL)
+	fmt.Fprintf(w, "  %s %s\n", ui.DimStyle.Render("model  "), plan.Model)
+	fmt.Fprintf(w, "  %s %s\n", ui.DimStyle.Render("url    "), plan.BaseURL)
 
 	// Config dir: your default ~/.claude vs an isolated per-profile dir.
 	if plan.Isolated {
-		fmt.Printf("  %s %s %s\n", ui.DimStyle.Render("config "), plan.ConfigDir,
+		fmt.Fprintf(w, "  %s %s %s\n", ui.DimStyle.Render("config "), plan.ConfigDir,
 			ui.WarnStyle.Render("(isolated — no access to your ~/.claude)"))
 	} else {
-		fmt.Printf("  %s %s\n", ui.DimStyle.Render("config "),
+		fmt.Fprintf(w, "  %s %s\n", ui.DimStyle.Render("config "),
 			ui.DimStyle.Render("default ~/.claude (your MCP servers, agents, memory)"))
 	}
 
@@ -229,15 +256,15 @@ func printLaunchBanner(p *profile.Profile, plan claude.Plan) {
 		clavisFlags = append(clavisFlags, "bare")
 	}
 	if len(clavisFlags) > 0 {
-		fmt.Printf("  %s %s\n", ui.DimStyle.Render("clavis "), strings.Join(clavisFlags, ", "))
+		fmt.Fprintf(w, "  %s %s\n", ui.DimStyle.Render("clavis "), strings.Join(clavisFlags, ", "))
 	}
 
 	// Flags forwarded verbatim to the claude binary.
 	if len(plan.ClaudeArgs) > 0 {
-		fmt.Printf("  %s %s\n", ui.DimStyle.Render("claude "),
+		fmt.Fprintf(w, "  %s %s\n", ui.DimStyle.Render("claude "),
 			ui.CommandStyle.Render(strings.Join(plan.ClaudeArgs, " ")))
 	}
-	fmt.Println()
+	fmt.Fprintln(w)
 }
 
 // runAdd runs the add-profile wizard.
@@ -329,17 +356,39 @@ func runRemove(args []string) {
 		os.Exit(1)
 	}
 
-	name := args[0]
-	force := len(args) > 1 && (args[1] == "--force" || args[1] == "-f")
+	// Accept -f/--force in any position (not just args[1]).
+	name := ""
+	force := false
+	for _, a := range args {
+		switch a {
+		case "-f", "--force":
+			force = true
+		default:
+			if name == "" {
+				name = a
+			}
+		}
+	}
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "Usage: clavis remove <name> [--force]")
+		os.Exit(1)
+	}
 
 	if !profile.Exists(name) {
 		fmt.Fprintln(os.Stderr, ui.Error(fmt.Sprintf("Profile %q not found. Run %s to see all profiles.", name, ui.CommandStyle.Render("clavis list"))))
 		os.Exit(1)
 	}
 
-	if !force && !ui.ConfirmDelete(name) {
-		fmt.Println("Cancelled.")
-		return
+	if !force {
+		// The confirm prompt needs a terminal; under an agent, require -f.
+		if !ui.IsInteractive() {
+			fmt.Fprintln(os.Stderr, ui.Error("refusing to delete without confirmation — pass -f/--force in non-interactive use"))
+			os.Exit(2)
+		}
+		if !ui.ConfirmDelete(name) {
+			fmt.Println("Cancelled.")
+			return
+		}
 	}
 
 	if err := profile.Delete(name); err != nil {
