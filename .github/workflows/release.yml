@@ -34,13 +34,17 @@ jobs:
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
       # Update the Homebrew tap (macOS + Linux formula) from the release
-      # checksums. Skipped when HOMEBREW_TAP_TOKEN is unset, so the release
-      # never fails on a missing secret.
+      # checksums. The step self-skips when HOMEBREW_TAP_TOKEN is unset (the
+      # `secrets` context is NOT allowed in a step `if`, so we gate inside the
+      # shell), so the release never fails on a missing secret.
       - name: Update Homebrew tap
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "HOMEBREW_TAP_TOKEN not set — skipping tap update."
+            exit 0
+          fi
           ver="${GITHUB_REF_NAME#v}"
           # Give the release a moment so checksums.txt is fetchable.
           for i in $(seq 1 10); do
