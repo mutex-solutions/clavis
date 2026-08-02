@@ -14,11 +14,40 @@ import (
 	"time"
 
 	"github.com/dinhlongviolin1/clavis/internal/ui"
+	"golang.org/x/mod/semver"
 )
 
 // The repo self-updates pull from. Overridable at build time via ldflags if a
 // fork or mirror is used.
 var UpdateRepo = "dinhlongviolin1/clavis"
+
+// Result of comparing the running build to a release tag.
+const (
+	cmpDev   = iota // current build isn't a real release version
+	cmpOlder        // current < latest (an update is available)
+	cmpEqual        // current == latest
+	cmpNewer        // current > latest (ahead of the release; don't downgrade)
+)
+
+// compareVersions orders the running version against a release tag using
+// semver. `current` is the version without a leading "v"; `tag` is the raw
+// release tag (with or without "v"). Anything that isn't valid semver — "dev",
+// "", a git SHA like "5ddc0db-dirty" — is treated as cmpDev.
+func compareVersions(current, tag string) int {
+	cur := "v" + strings.TrimPrefix(current, "v")
+	rel := "v" + strings.TrimPrefix(tag, "v")
+	if !semver.IsValid(cur) || !semver.IsValid(rel) {
+		return cmpDev
+	}
+	switch semver.Compare(cur, rel) {
+	case -1:
+		return cmpOlder
+	case 1:
+		return cmpNewer
+	default:
+		return cmpEqual
+	}
+}
 
 type ghRelease struct {
 	TagName string `json:"tag_name"`
@@ -56,12 +85,19 @@ Usage:
 	latest := strings.TrimPrefix(rel.TagName, "v")
 	current := strings.TrimPrefix(Version, "v")
 
-	if current == latest {
+	// Compare using semver ordering, not string equality, so we never offer a
+	// downgrade and correctly recognise "already up to date".
+	switch cmp := compareVersions(current, rel.TagName); {
+	case cmp == cmpDev:
+		// Non-release build (go install, local build): can't reason about
+		// ordering, so just report the latest and let the user decide.
+		fmt.Println(ui.Warn("Running a dev build — the latest release is " + latest + "."))
+	case cmp == cmpNewer:
+		fmt.Println(ui.Success(fmt.Sprintf("You're ahead of the latest release (local %s > %s)", current, latest)))
+		return
+	case cmp == cmpEqual:
 		fmt.Println(ui.Success(fmt.Sprintf("Already on the latest version (%s)", current)))
 		return
-	}
-	if current == "dev" || current == "" {
-		fmt.Println(ui.Warn("Running a dev build — the installed release may differ."))
 	}
 
 	fmt.Printf("  %s → %s\n", ui.DimStyle.Render(current), ui.CommandStyle.Render(latest))

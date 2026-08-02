@@ -2,7 +2,8 @@
 bin/
 dist/
 *.exe
-clavis
+# Stray top-level build output only (NOT the cmd/clavis source dir).
+/clavis
 
 # OS
 .DS_Store
