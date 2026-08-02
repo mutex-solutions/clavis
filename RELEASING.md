@@ -28,28 +28,41 @@ tag reports `dev`. Verify after tagging:
 clavis version   # should print the tag, e.g. "clavis 0.2.0"
 ```
 
-## Optional: Homebrew + Scoop
+## Homebrew (`brew install dinhlongviolin1/tap/clavis`)
 
-The release also publishes a Homebrew cask and a Scoop manifest **if** the
-corresponding tokens are set — otherwise GoReleaser skips them and the release
-still succeeds (the `skip_upload` guards handle this).
-
-To turn them on:
-
-### Homebrew (`brew install dinhlongviolin1/tap/clavis`)
-
-1. Create a public repo named **`homebrew-tap`** under your account (the
-   `homebrew-` prefix is required by Homebrew).
-2. Create a fine-grained PAT with **Contents: read/write** on that repo.
-3. Add it to the clavis repo as a secret named **`HOMEBREW_TAP_TOKEN`**
-   (Settings → Secrets and variables → Actions → New repository secret).
-4. Cut the next release. GoReleaser pushes the cask to `homebrew-tap`.
-
-Users then run:
+The tap repo **`dinhlongviolin1/homebrew-tap`** already exists and carries a
+formula that works on macOS **and** Linux (amd64 + arm64). Users install with:
 
 ```bash
 brew install dinhlongviolin1/tap/clavis
 ```
+
+### Auto-update on release
+
+`.github/workflows/release.yml` regenerates the formula from the release
+checksums (`scripts/gen-formula.sh`) and pushes it to the tap — but only when a
+`HOMEBREW_TAP_TOKEN` secret is set. Without it, the step is skipped and the
+release still succeeds; you'd just update the tap manually (below).
+
+To enable auto-update:
+
+1. Create a fine-grained PAT with **Contents: read/write** on
+   `dinhlongviolin1/homebrew-tap`.
+2. Add it to the clavis repo as the secret **`HOMEBREW_TAP_TOKEN`**
+   (Settings → Secrets and variables → Actions).
+3. Future releases update the tap automatically.
+
+### Update the tap by hand
+
+```bash
+sh scripts/gen-formula.sh 0.2.1 > Formula/clavis.rb   # from within a tap checkout
+# commit + push to dinhlongviolin1/homebrew-tap
+```
+
+## Optional: Scoop (Windows)
+
+GoReleaser publishes a Scoop manifest **if** `SCOOP_BUCKET_TOKEN` is set;
+otherwise it's skipped and the release still succeeds.
 
 ### Scoop (Windows: `scoop install clavis`)
 
