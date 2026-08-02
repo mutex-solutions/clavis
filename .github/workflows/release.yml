@@ -47,7 +47,7 @@ jobs:
             curl -fsSL "https://github.com/${GITHUB_REPOSITORY}/releases/download/v${ver}/checksums.txt" -o /tmp/sums.txt && break
             sleep 5
           done
-          sh scripts/gen-formula.sh "$ver" > /tmp/clavis.rb
+          sh scripts/gen-formula.sh "$ver" /tmp/sums.txt > /tmp/clavis.rb
           git clone "https://x-access-token:${GH_TOKEN}@github.com/dinhlongviolin1/homebrew-tap.git" /tmp/tap
           mkdir -p /tmp/tap/Formula
           cp /tmp/clavis.rb /tmp/tap/Formula/clavis.rb

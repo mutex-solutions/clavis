@@ -7,11 +7,17 @@
 # hand to refresh the tap.
 set -eu
 
-ver="${1:?usage: gen-formula.sh <version e.g. 0.2.1>}"
+ver="${1:?usage: gen-formula.sh <version e.g. 0.2.1> [checksums-file]}"
 repo="dinhlongviolin1/clavis"
 base="https://github.com/$repo/releases/download/v$ver"
 
-sums=$(curl -fsSL "$base/checksums.txt")
+# Checksums come from a local file if given (2nd arg) — lets the caller retry
+# the download to dodge release-propagation races — otherwise fetched directly.
+if [ "${2:-}" != "" ] && [ -f "$2" ]; then
+  sums=$(cat "$2")
+else
+  sums=$(curl -fsSL "$base/checksums.txt")
+fi
 sha() { echo "$sums" | grep " clavis_$1\$" | cut -d' ' -f1; }
 
 d_arm=$(sha darwin_arm64.tar.gz)
