@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"os"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -86,7 +87,7 @@ func runSpinner(label string, clear bool, task func() (any, error)) (any, error)
 		clearScreen()
 	}
 
-	prog := tea.NewProgram(newLoadingModel(label))
+	prog := tea.NewProgram(newLoadingModel(label), stdinTTY())
 	go func() {
 		res, err := task()
 		prog.Send(fetchDoneMsg{result: res, err: err})
@@ -94,9 +95,16 @@ func runSpinner(label string, clear bool, task func() (any, error)) (any, error)
 
 	final, runErr := prog.Run()
 	if runErr != nil {
-		// The tea program itself failed — fall back to running the task
-		// synchronously so the wizard can still proceed.
-		return task()
+		// If the spinner program panicked (not a terminal problem), fall back to
+		// running the task synchronously so the wizard can still proceed.
+		if errors.Is(runErr, tea.ErrProgramPanic) {
+			return task()
+		}
+		// Otherwise the program failed because the input/terminal went away
+		// (EIO, or EOF via our stdin wrapper). Re-running the task here — often
+		// a network call that can hang indefinitely — would orphan the process.
+		// Surface the error and let the wizard abort instead.
+		return nil, runErr
 	}
 	lm := final.(loadingModel)
 	if lm.interrupted {

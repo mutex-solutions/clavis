@@ -235,7 +235,7 @@ func RunModelSelect(title string, models []provider.ModelInfo, height int, extra
 
 	// Clear the screen so each selection is its own clean view.
 	clearScreen()
-	prog := tea.NewProgram(newModelSelect(title, hint, items, height))
+	prog := tea.NewProgram(newModelSelect(title, hint, items, height), stdinTTY())
 	final, err := prog.Run()
 	if err != nil {
 		return "", err

@@ -27,7 +27,9 @@ func clearScreen() {
 //
 //   - Ctrl+C always exits the whole process (130), on every step. huh runs in
 //     raw mode (ISIG off), so a keyboard Ctrl+C never reaches an OS SIGINT
-//     handler — we intercept the 0x03 byte via a bubbletea filter instead.
+//     handler. We bind Ctrl+C to the form's Quit binding so the form quits
+//     *cleanly* (bubbletea restores the terminal), then exit 130 after Run
+//     returns to mirror the SIGINT a keyboard Ctrl+C would otherwise raise.
 //   - Esc aborts the form (returns huh.ErrUserAborted), which callers treat as
 //     "go back". By default huh disables its Back binding on the first field of
 //     a group, so Esc would do nothing on our single-field steps; adding Esc to
@@ -36,16 +38,26 @@ func clearScreen() {
 // Returns huh.ErrUserAborted on Esc, or the form error otherwise.
 func runForm(form *huh.Form) error {
 	km := huh.NewDefaultKeyMap()
-	km.Quit = key.NewBinding(key.WithKeys("esc")) // Ctrl+C handled by the filter below
-	return form.
+	km.Quit = key.NewBinding(key.WithKeys("esc", "ctrl+c"))
+
+	interrupted := false
+	err := form.
 		WithKeyMap(km).
-		WithProgramOptions(tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
+		WithProgramOptions(stdinTTY(), tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
 			if k, ok := msg.(tea.KeyMsg); ok && k.String() == "ctrl+c" {
-				os.Exit(130)
+				interrupted = true
 			}
 			return msg
 		})).
 		Run()
+
+	if interrupted {
+		// The form already tore the terminal down above (clean quit); only now
+		// is it safe to exit the process. Exiting inside the tea filter would
+		// skip bubbletea's terminal restore and leave the shell in raw mode.
+		os.Exit(130)
+	}
+	return err
 }
 
 type AddResult struct {
