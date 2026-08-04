@@ -40,7 +40,7 @@ class Clavis < Formula
   desc "Claude Code provider manager — one binary, many backends"
   homepage "https://github.com/$repo"
   version "$ver"
-  license "MIT"
+  license "Apache-2.0"
 
   on_macos do
     on_arm do

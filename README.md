@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/dinhlongviolin1/clavis/actions/workflows/ci.yml/badge.svg)](https://github.com/dinhlongviolin1/clavis/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/dinhlongviolin1/clavis)](https://github.com/dinhlongviolin1/clavis/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **Clavis** manages multiple Anthropic-compatible API providers for
 [Claude Code](https://code.claude.com). Store API keys securely, pick a
@@ -289,4 +289,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
 
 ## License
 
-[MIT](LICENSE) © 2026 Long Nguyen
+[Apache License 2.0](LICENSE) © 2026 Long Nguyen
