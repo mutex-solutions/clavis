@@ -29,3 +29,13 @@ vendor/
 claude-code-settings.md
 claude-code-env-vars.md
 claude-cli-reference.md
+
+# Secrets — broadened (defense-in-depth; keys live in ~/.clavis, never in-repo)
+.env.*
+*.key
+*.p12
+*.token
+*credentials*.json
+secrets.*
+config.local.*
+.clavis/
