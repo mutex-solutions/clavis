@@ -70,4 +70,4 @@ notes.
 ## License
 
 By contributing you agree your contributions are licensed under the
-[MIT License](LICENSE).
+[Apache License 2.0](LICENSE).
