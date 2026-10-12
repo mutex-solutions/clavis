@@ -31,15 +31,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Update the Homebrew tap (macOS + Linux formula) from the release
-      # checksums. The step self-skips when HOMEBREW_TAP_TOKEN is unset (the
-      # `secrets` context is NOT allowed in a step `if`, so we gate inside the
-      # shell), so the release never fails on a missing secret.
+      # checksums. Authenticates with a write-enabled *deploy key* on the tap
+      # repo (secret HOMEBREW_TAP_DEPLOY_KEY), not a PAT: a deploy key is scoped
+      # to that one repository and does not expire. The step self-skips when the
+      # secret is unset (the `secrets` context is NOT allowed in a step `if`, so
+      # we gate inside the shell), so a release never fails on a missing key.
       - name: Update Homebrew tap
         env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
         run: |
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "HOMEBREW_TAP_TOKEN not set — skipping tap update."
+          if [ -z "${TAP_DEPLOY_KEY}" ]; then
+            echo "HOMEBREW_TAP_DEPLOY_KEY not set; skipping tap update."
             exit 0
           fi
           ver="${GITHUB_REF_NAME#v}"
@@ -49,7 +51,17 @@ jobs:
             sleep 5
           done
           sh scripts/gen-formula.sh "$ver" /tmp/sums.txt > /tmp/clavis.rb
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/mutex-solutions/homebrew-tap.git" /tmp/tap
+
+          # Deploy-key auth. IdentitiesOnly keeps the runner from offering any
+          # other key, and GIT_SSH_COMMAND covers the clone and the push that
+          # follows it.
+          mkdir -p ~/.ssh
+          printf '%s\n' "${TAP_DEPLOY_KEY}" > ~/.ssh/tap_deploy_key
+          chmod 600 ~/.ssh/tap_deploy_key
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap_deploy_key -o IdentitiesOnly=yes"
+
+          git clone --quiet git@github.com:mutex-solutions/homebrew-tap.git /tmp/tap
           mkdir -p /tmp/tap/Formula
           cp /tmp/clavis.rb /tmp/tap/Formula/clavis.rb
           cd /tmp/tap

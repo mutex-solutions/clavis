@@ -40,26 +40,36 @@ brew install mutex-solutions/tap/clavis
 ### Auto-update on release
 
 `.github/workflows/release.yml` regenerates the formula from the release
-checksums (`scripts/gen-formula.sh`) and pushes it to the tap, but only when a
-`HOMEBREW_TAP_TOKEN` secret is set. Without it, the step is skipped and the
-release still succeeds; you'd just update the tap manually (below).
+checksums (`scripts/gen-formula.sh`) and pushes it to the tap. It authenticates
+with a **write-enabled deploy key** on the tap repo, held in the
+`HOMEBREW_TAP_DEPLOY_KEY` secret. If that secret is unset the step self-skips
+and the release still succeeds; you would just update the tap manually (below).
 
-To enable auto-update:
+Setup, recorded for rebuilds:
 
-1. Create a fine-grained PAT with **Contents: read/write** on
-   `mutex-solutions/homebrew-tap`.
-2. Add it to the clavis repo as the secret **`HOMEBREW_TAP_TOKEN`**
-   (Settings → Secrets and variables → Actions).
-3. Future releases update the tap automatically.
+1. Generate a keypair, and add the public half to `mutex-solutions/homebrew-tap`
+   as a deploy key **with write access**.
+2. Store the private half as the clavis secret **`HOMEBREW_TAP_DEPLOY_KEY`**.
+3. Deploy keys must be enabled for the org. `mutex-solutions` is new, and GitHub
+   disables them for new organisations by default; set the org's
+   `deploy_keys_enabled_for_repositories` to true.
 
-> **The token must be scoped to the tap repo, not to your user.** A secret that
-> is present but *mis-scoped* does **not** skip the step: it clones, regenerates
-> the formula, and then fails the whole release on `git push` with
-> `403 … Permission to mutex-solutions/homebrew-tap.git denied to <you>`.
-> Note also that repo secrets **do** survive a repository transfer, so a token
-> created before the move to `mutex-solutions` will keep being used and keep
-> failing. Re-create the PAT after any owner change. The `v0.3.0` release hit
-> exactly this: the binaries published fine, only the tap step went red.
+A deploy key rather than a PAT, because it is scoped to the single repository it
+is installed on and it does not expire.
+
+> **Post-mortem: why this is not a PAT any more.** Until 2026-10-13 the step used
+> `HOMEBREW_TAP_TOKEN`, a fine-grained PAT. Two things went wrong at once when
+> clavis moved into the org:
+>
+> 1. **Repository secrets survive a transfer.** The old PAT came across, so the
+>    step did not self-skip. A present-but-mis-scoped secret *fails* the release,
+>    where an absent one merely skips it. `v0.3.0` published its binaries and
+>    then went red on `git push`: `403 … Permission to
+>    mutex-solutions/homebrew-tap.git denied to <you>`.
+> 2. A PAT is scoped to a **user**. After the move the tap belongs to an **org**,
+>    so a token minted before it cannot write after it.
+>
+> The deploy key removes both failure modes.
 
 ### Update the tap by hand
 
