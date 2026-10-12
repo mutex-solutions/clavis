@@ -40,7 +40,7 @@ brew install mutex-solutions/tap/clavis
 ### Auto-update on release
 
 `.github/workflows/release.yml` regenerates the formula from the release
-checksums (`scripts/gen-formula.sh`) and pushes it to the tap — but only when a
+checksums (`scripts/gen-formula.sh`) and pushes it to the tap, but only when a
 `HOMEBREW_TAP_TOKEN` secret is set. Without it, the step is skipped and the
 release still succeeds; you'd just update the tap manually (below).
 
@@ -53,7 +53,7 @@ To enable auto-update:
 3. Future releases update the tap automatically.
 
 > **The token must be scoped to the tap repo, not to your user.** A secret that
-> is present but *mis-scoped* does **not** skip the step — it clones, regenerates
+> is present but *mis-scoped* does **not** skip the step: it clones, regenerates
 > the formula, and then fails the whole release on `git push` with
 > `403 … Permission to mutex-solutions/homebrew-tap.git denied to <you>`.
 > Note also that repo secrets **do** survive a repository transfer, so a token

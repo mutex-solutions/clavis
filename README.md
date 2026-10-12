@@ -8,7 +8,7 @@
 
 **Clavis** manages multiple Anthropic-compatible API providers for
 [Claude Code](https://code.claude.com). Store API keys securely, pick a
-profile, launch. Single static Go binary — no Node, no Python, no runtime.
+profile, launch. Single static Go binary: no Node, no Python, no runtime.
 
 ```
 $ clavis
@@ -29,31 +29,31 @@ $ clavis deepseek "fix the auth bug"
 
 ## Why?
 
-Claude Code works with any Anthropic-compatible API — DeepSeek, Z.ai,
+Claude Code works with any Anthropic-compatible API: DeepSeek, Z.ai,
 MiniMax, OpenRouter, Moonshot, Qwen/Alibaba MaaS, and more. But switching
 between them means juggling env vars in your shell. Keys leak into `.zshrc`.
 No validation. No discoverability.
 
 Clavis gives you a structured, secure, keyboard-driven way to manage all your
-providers — and it keeps your existing Claude Code setup (MCP servers, agents,
+providers, and it keeps your existing Claude Code setup (MCP servers, agents,
 memory, settings) intact while routing to whichever provider you choose.
 
 ## Features
 
-- **5-tier model mapping** — map provider models to Claude Code's
+- **5-tier model mapping**: map provider models to Claude Code's
   opus / sonnet / haiku / subagent tiers plus the primary `ANTHROPIC_MODEL`
-- **Secure key storage** — keys in `.env` files (chmod 0600), never in metadata
-- **Shares your `~/.claude` by default** — keep your MCP servers, agents, and
+- **Secure key storage**: keys in `.env` files (chmod 0600), never in metadata
+- **Shares your `~/.claude` by default**: keep your MCP servers, agents, and
   memory; opt into an isolated config per-profile or per-launch
-- **Live model discovery** — fetches the provider's real model list during setup
-- **Key validation** — every profile is pinged before it's saved
-- **Token management** — compaction control, effort level, output limits, timeouts
-- **3P provider hygiene** — auto-disables telemetry, beta headers, and attribution
+- **Live model discovery**: fetches the provider's real model list during setup
+- **Key validation**: every profile is pinged before it's saved
+- **Token management**: compaction control, effort level, output limits, timeouts
+- **3P provider hygiene**: auto-disables telemetry, beta headers, and attribution
   for third-party providers
-- **Agent-friendly** — headless `add` with flags, `--json` output, stable exit
+- **Agent-friendly**: headless `add` with flags, `--json` output, stable exit
   codes, `clavis test` for health checks
-- **Self-updating** — `clavis update` pulls the latest release
-- **Zero runtime** — single static binary for Linux, macOS, and Windows
+- **Self-updating**: `clavis update` pulls the latest release
+- **Zero runtime**: single static binary for Linux, macOS, and Windows
 
 ## Install
 
@@ -180,7 +180,7 @@ verbatim to `claude`.
 | Moonshot Kimi | `api.moonshot.ai/anthropic` |
 | Custom | *your endpoint* (e.g. Qwen/Alibaba MaaS) |
 
-Any Anthropic-compatible endpoint works via the **Custom** provider — just
+Any Anthropic-compatible endpoint works via the **Custom** provider: just
 give it the base URL and key.
 
 ## For agents & CI
@@ -190,7 +190,7 @@ cron, CI) with **no interactive terminal**. Every interactive flow has a
 flag-driven equivalent; nothing blocks on a prompt.
 
 ```bash
-# Create a profile — key from stdin/env/file so it never lands in `ps`/history.
+# Create a profile: key from stdin/env/file so it never lands in `ps`/history.
 echo "$DEEPSEEK_KEY" | clavis add --json --key-stdin \
   --provider deepseek --model deepseek-chat \
   --reasoning-model deepseek-reasoner --alias ds --overwrite
@@ -203,17 +203,17 @@ clavis ds -- -p "2+2?"    # launch headless; banner goes to stderr, answer to st
 
 Two integration styles:
 
-- **Let clavis launch claude:** `clavis <profile> -- -p "..."` — the banner is
+- **Let clavis launch claude:** `clavis <profile> -- -p "..."`. The banner is
   printed to **stderr** (auto-suppressed when stdout isn't a TTY, or with
   `--quiet`), so stdout carries only claude's answer.
 - **Own the process yourself:** `eval "$(clavis env <profile> --reveal-key)"`
   then run your own `claude`. `clavis env` prints exactly the vars clavis would
-  set — nothing else touches your environment.
+  set. Nothing else touches your environment.
 
 Guarantees for scripting:
 
 - **No TTY, no surprise.** Interactive commands run without a terminal exit `2`
-  with a clear message — never a silent success.
+  with a clear message, never a silent success.
 - **Valid JSON always.** `--json` outputs are `json.Marshal`ed; `list --json`
   is `[]` (not `null`) when empty.
 - **Stable exit codes:** `0` ok · `2` bad/missing flag · `3` provider/base-URL ·
@@ -251,7 +251,7 @@ At launch, clavis:
 
 ## Config isolation
 
-By default a profile **shares your real `~/.claude`** — your MCP servers,
+By default a profile **shares your real `~/.claude`**: your MCP servers,
 subagents, memory, and settings all work exactly as they do normally; clavis
 just points Claude Code at a different provider/model.
 
