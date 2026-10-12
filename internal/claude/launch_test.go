@@ -1,11 +1,27 @@
 package claude
 
 import (
+	"os"
 	"strings"
 	"testing"
 
-	"github.com/dinhlongviolin1/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/profile"
 )
+
+// TestMain clears inherited Claude Code hygiene vars for the whole package.
+// buildEnv merges os.Environ(), so any test asserting one of these is *absent*
+// would otherwise depend on the developer's shell: running `go test` from inside
+// a clavis-launched session leaks CLAUDE_CODE_DISABLE_* into the result and the
+// test fails for reasons unrelated to the code under test.
+func TestMain(m *testing.M) {
+	for _, k := range []string{
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+		"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+	} {
+		os.Unsetenv(k)
+	}
+	os.Exit(m.Run())
+}
 
 func envToMap(env []string) map[string]string {
 	m := make(map[string]string)

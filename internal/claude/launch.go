@@ -8,7 +8,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/dinhlongviolin1/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/profile"
 )
 
 // Launch builds the environment from a profile and spawns claude.

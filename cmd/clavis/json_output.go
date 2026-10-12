@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dinhlongviolin1/clavis/internal/profile"
-	"github.com/dinhlongviolin1/clavis/internal/provider"
+	"github.com/mutex-solutions/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/provider"
 )
 
 // jsonError prints a properly escaped JSON error object to stderr and exits.

@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/dinhlongviolin1/clavis/internal/provider"
+	"github.com/mutex-solutions/clavis/internal/provider"
 )
 
 // Styles for the model selector.

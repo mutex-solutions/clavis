@@ -10,8 +10,8 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/dinhlongviolin1/clavis/internal/profile"
-	"github.com/dinhlongviolin1/clavis/internal/provider"
+	"github.com/mutex-solutions/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/provider"
 )
 
 // errBack signals that the user wants to go to the previous step.

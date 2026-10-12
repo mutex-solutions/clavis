@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/dinhlongviolin1/clavis/internal/provider"
+	"github.com/mutex-solutions/clavis/internal/provider"
 )
 
 func models(ids ...string) []provider.ModelInfo {

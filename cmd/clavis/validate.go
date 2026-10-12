@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dinhlongviolin1/clavis/internal/profile"
-	"github.com/dinhlongviolin1/clavis/internal/provider"
-	"github.com/dinhlongviolin1/clavis/internal/ui"
+	"github.com/mutex-solutions/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/provider"
+	"github.com/mutex-solutions/clavis/internal/ui"
 )
 
 // runValidate pings a profile's provider.

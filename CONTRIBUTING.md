@@ -8,7 +8,7 @@ are welcome.
 Requires **Go 1.23+**.
 
 ```bash
-git clone https://github.com/dinhlongviolin1/clavis.git
+git clone https://github.com/mutex-solutions/clavis.git
 cd clavis
 make build      # → bin/clavis
 make test       # go test -race ./...

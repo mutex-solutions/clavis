@@ -1,13 +1,13 @@
 # clavis installer for Windows (PowerShell).
 #
-#   irm https://raw.githubusercontent.com/dinhlongviolin1/clavis/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/mutex-solutions/clavis/main/install.ps1 | iex
 #
 # Env overrides:
 #   $env:CLAVIS_VERSION = "v0.1.0"   install a specific tag (default: latest)
 #   $env:CLAVIS_INSTALL_DIR = "..."  where to put the binary
 
 $ErrorActionPreference = "Stop"
-$Repo = "dinhlongviolin1/clavis"
+$Repo = "mutex-solutions/clavis"
 
 # --- Detect arch ---
 $arch = if ([Environment]::Is64BitOperatingSystem) {

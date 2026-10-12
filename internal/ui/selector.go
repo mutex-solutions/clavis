@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/huh"
-	"github.com/dinhlongviolin1/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/profile"
 )
 
 // SelectorResult is what the profile selector returns.

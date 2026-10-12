@@ -1,4 +1,4 @@
-module github.com/dinhlongviolin1/clavis
+module github.com/mutex-solutions/clavis
 
 go 1.25.0
 
