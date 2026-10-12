@@ -52,6 +52,15 @@ To enable auto-update:
    (Settings → Secrets and variables → Actions).
 3. Future releases update the tap automatically.
 
+> **The token must be scoped to the tap repo, not to your user.** A secret that
+> is present but *mis-scoped* does **not** skip the step — it clones, regenerates
+> the formula, and then fails the whole release on `git push` with
+> `403 … Permission to mutex-solutions/homebrew-tap.git denied to <you>`.
+> Note also that repo secrets **do** survive a repository transfer, so a token
+> created before the move to `mutex-solutions` will keep being used and keep
+> failing. Re-create the PAT after any owner change. The `v0.3.0` release hit
+> exactly this: the binaries published fine, only the tap step went red.
+
 ### Update the tap by hand
 
 ```bash
