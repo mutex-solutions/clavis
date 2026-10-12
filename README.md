@@ -2,8 +2,8 @@
 
 > 🔑 Claude Code provider manager. One binary, many backends.
 
-[![CI](https://github.com/dinhlongviolin1/clavis/actions/workflows/ci.yml/badge.svg)](https://github.com/dinhlongviolin1/clavis/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/dinhlongviolin1/clavis)](https://github.com/dinhlongviolin1/clavis/releases/latest)
+[![CI](https://github.com/mutex-solutions/clavis/actions/workflows/ci.yml/badge.svg)](https://github.com/mutex-solutions/clavis/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mutex-solutions/clavis)](https://github.com/mutex-solutions/clavis/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **Clavis** manages multiple Anthropic-compatible API providers for
@@ -60,34 +60,34 @@ memory, settings) intact while routing to whichever provider you choose.
 ### Quick install (Linux / macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dinhlongviolin1/clavis/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/mutex-solutions/clavis/main/install.sh | sh
 ```
 
 ### Homebrew (macOS / Linux)
 
 ```bash
-brew install dinhlongviolin1/tap/clavis
+brew install mutex-solutions/tap/clavis
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/dinhlongviolin1/clavis/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/mutex-solutions/clavis/main/install.ps1 | iex
 ```
 
 ### From source (requires Go 1.23+)
 
 ```bash
-go install github.com/dinhlongviolin1/clavis/cmd/clavis@latest
+go install github.com/mutex-solutions/clavis/cmd/clavis@latest
 # or
-git clone https://github.com/dinhlongviolin1/clavis.git
+git clone https://github.com/mutex-solutions/clavis.git
 cd clavis && make install
 ```
 
 ### Manual
 
 Download a build for your OS/arch from the
-[releases page](https://github.com/dinhlongviolin1/clavis/releases) and put the
+[releases page](https://github.com/mutex-solutions/clavis/releases) and put the
 `clavis` binary on your `PATH`.
 
 Once installed, keep it current with:

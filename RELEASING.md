@@ -28,13 +28,13 @@ tag reports `dev`. Verify after tagging:
 clavis version   # should print the tag, e.g. "clavis 0.2.0"
 ```
 
-## Homebrew (`brew install dinhlongviolin1/tap/clavis`)
+## Homebrew (`brew install mutex-solutions/tap/clavis`)
 
-The tap repo **`dinhlongviolin1/homebrew-tap`** already exists and carries a
+The tap repo **`mutex-solutions/homebrew-tap`** already exists and carries a
 formula that works on macOS **and** Linux (amd64 + arm64). Users install with:
 
 ```bash
-brew install dinhlongviolin1/tap/clavis
+brew install mutex-solutions/tap/clavis
 ```
 
 ### Auto-update on release
@@ -47,7 +47,7 @@ release still succeeds; you'd just update the tap manually (below).
 To enable auto-update:
 
 1. Create a fine-grained PAT with **Contents: read/write** on
-   `dinhlongviolin1/homebrew-tap`.
+   `mutex-solutions/homebrew-tap`.
 2. Add it to the clavis repo as the secret **`HOMEBREW_TAP_TOKEN`**
    (Settings → Secrets and variables → Actions).
 3. Future releases update the tap automatically.
@@ -56,26 +56,7 @@ To enable auto-update:
 
 ```bash
 sh scripts/gen-formula.sh 0.2.1 > Formula/clavis.rb   # from within a tap checkout
-# commit + push to dinhlongviolin1/homebrew-tap
-```
-
-## Optional: Scoop (Windows)
-
-GoReleaser publishes a Scoop manifest **if** `SCOOP_BUCKET_TOKEN` is set;
-otherwise it's skipped and the release still succeeds.
-
-### Scoop (Windows: `scoop install clavis`)
-
-1. Create a public repo named **`scoop-bucket`**.
-2. Create a PAT with Contents: read/write on it.
-3. Add it as the secret **`SCOOP_BUCKET_TOKEN`**.
-4. Cut the next release.
-
-Users then run:
-
-```powershell
-scoop bucket add dinhlongviolin1 https://github.com/dinhlongviolin1/scoop-bucket
-scoop install clavis
+# commit + push to mutex-solutions/homebrew-tap
 ```
 
 ## Validate the config locally

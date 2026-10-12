@@ -8,7 +8,7 @@
 set -eu
 
 ver="${1:?usage: gen-formula.sh <version e.g. 0.2.1> [checksums-file]}"
-repo="dinhlongviolin1/clavis"
+repo="mutex-solutions/clavis"
 base="https://github.com/$repo/releases/download/v$ver"
 
 # Checksums come from a local file if given (2nd arg) — lets the caller retry

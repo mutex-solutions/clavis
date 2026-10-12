@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dinhlongviolin1/clavis/internal/ui"
+	"github.com/mutex-solutions/clavis/internal/ui"
 	"golang.org/x/mod/semver"
 )
 
 // The repo self-updates pull from. Overridable at build time via ldflags if a
 // fork or mirror is used.
-var UpdateRepo = "dinhlongviolin1/clavis"
+var UpdateRepo = "mutex-solutions/clavis"
 
 // Result of comparing the running build to a release tag.
 const (

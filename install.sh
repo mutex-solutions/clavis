@@ -1,14 +1,14 @@
 #!/bin/sh
 # clavis installer — downloads the latest release for your OS/arch.
 #
-#   curl -fsSL https://raw.githubusercontent.com/dinhlongviolin1/clavis/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/mutex-solutions/clavis/main/install.sh | sh
 #
 # Env overrides:
 #   CLAVIS_VERSION=v0.1.0   install a specific tag (default: latest)
 #   CLAVIS_INSTALL_DIR=~/.local/bin   where to put the binary
 set -eu
 
-REPO="dinhlongviolin1/clavis"
+REPO="mutex-solutions/clavis"
 BINARY="clavis"
 
 info()  { printf '  %s\n' "$1"; }

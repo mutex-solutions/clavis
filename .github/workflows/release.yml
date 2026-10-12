@@ -29,9 +29,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: set this repo secret to auto-publish the Scoop manifest.
-          # Absent → goreleaser skips it (release still succeeds).
-          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
       # Update the Homebrew tap (macOS + Linux formula) from the release
       # checksums. The step self-skips when HOMEBREW_TAP_TOKEN is unset (the
@@ -52,7 +49,7 @@ jobs:
             sleep 5
           done
           sh scripts/gen-formula.sh "$ver" /tmp/sums.txt > /tmp/clavis.rb
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/dinhlongviolin1/homebrew-tap.git" /tmp/tap
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/mutex-solutions/homebrew-tap.git" /tmp/tap
           mkdir -p /tmp/tap/Formula
           cp /tmp/clavis.rb /tmp/tap/Formula/clavis.rb
           cd /tmp/tap

@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dinhlongviolin1/clavis/internal/claude"
-	"github.com/dinhlongviolin1/clavis/internal/profile"
-	"github.com/dinhlongviolin1/clavis/internal/ui"
+	"github.com/mutex-solutions/clavis/internal/claude"
+	"github.com/mutex-solutions/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/ui"
 )
 
 // runEnv implements `clavis env <profile>`: print the environment variables

@@ -3,7 +3,7 @@ package claude
 import (
 	"testing"
 
-	"github.com/dinhlongviolin1/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/profile"
 )
 
 func TestEnvVars_SharedByDefault(t *testing.T) {

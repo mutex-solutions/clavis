@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dinhlongviolin1/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/profile"
 )
 
 // TestMain clears inherited Claude Code hygiene vars for the whole package.

@@ -6,9 +6,9 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/dinhlongviolin1/clavis/internal/profile"
-	"github.com/dinhlongviolin1/clavis/internal/provider"
-	"github.com/dinhlongviolin1/clavis/internal/ui"
+	"github.com/mutex-solutions/clavis/internal/profile"
+	"github.com/mutex-solutions/clavis/internal/provider"
+	"github.com/mutex-solutions/clavis/internal/ui"
 )
 
 // checkResult is one line of the test report.
