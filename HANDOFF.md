@@ -25,7 +25,8 @@ cmd/clavis/main.go          → entrypoint, flag parsing, subcommand routing
 internal/claude/            → env setup + os/exec spawn (NOT syscall.Exec)
 internal/profile/           → CRUD for ~/.clavis/profiles/<name>/
 internal/provider/          → catalog loader (go:embed)
-internal/tui/               → bubbletea models (selector, add-wizard)
+internal/ui/                → huh forms: selector, add wizard, editor
+                              (settings.go holds the prompts both wizards share)
 embed/providers.json        → built-in provider catalog (go:embed)
 ```
 

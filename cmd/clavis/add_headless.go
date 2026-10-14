@@ -49,7 +49,8 @@ func runAddOrHeadless(args []string) {
 	keyEnv := fs.String("key-env", "", "Read the API key from this environment variable")
 	keyStdin := fs.Bool("key-stdin", false, "Read the API key from stdin")
 	overwrite := fs.Bool("overwrite", false, "Replace an existing profile of the same name (upsert)")
-	contextWindow := fs.Int("context-window", 0, "Context window size in tokens")
+	contextWindow := fs.Int("context-window", 0, "The model's real context window in tokens (stops Claude Code assuming 200K)")
+	compactWindow := fs.Int("compact-window", 0, "Token count at which auto-compaction fires (capped at --context-window)")
 	compactPct := fs.Int("compact-pct", 0, "Auto-compact threshold, 1-100 (%)")
 	maxTokens := fs.Int("max-tokens", 0, "Max output tokens per request")
 	effort := fs.String("effort", "", "Effort level: low|medium|high|xhigh|max|auto")
@@ -186,7 +187,10 @@ func runAddOrHeadless(args []string) {
 	}
 
 	if *contextWindow > 0 {
-		p.ContextWindow = contextWindow
+		p.MaxContextTokens = contextWindow
+	}
+	if *compactWindow > 0 {
+		p.AutoCompactWindow = compactWindow
 	}
 	if *compactPct > 0 {
 		p.AutoCompactPct = compactPct
@@ -254,8 +258,19 @@ Common options:
   --base-url <url>   Endpoint (required only for --provider custom)
   --effort <level>   low|medium|high|xhigh|max|auto
   --no-thinking      Disable thinking tokens
-  --compact-pct <n>  Auto-compact threshold, 1-100
-  --context-window <n> / --max-tokens <n> / --timeout <ms>
+
+  Token budget — three different things, best set in this order:
+  --context-window <n>  The model's REAL context window (e.g. 128000, 1000000).
+                     Claude Code only recognises claude-* model IDs and assumes
+                     200k for anything else. This declares the truth, which is
+                     what compaction is measured against.
+  --compact-pct <n>  Compact at n% of that window (1-100)
+  --compact-window <n>  Compact at an absolute token count. Claude Code clamps
+                     this to the model's window, so it can't stand in for
+                     --context-window: used alone on a 1M model it silences the
+                     "unrecognised model" warning while the session stays
+                     capped at 200k.
+  --max-tokens <n> / --timeout <ms>
   --headers "K: v\nK2: v2"   Extra headers
   --isolated         Give this profile its own CLAUDE_CONFIG_DIR
                      (default: share your ~/.claude — MCP, agents, memory)

@@ -47,7 +47,11 @@ memory, settings) intact while routing to whichever provider you choose.
   memory; opt into an isolated config per-profile or per-launch
 - **Live model discovery**: fetches the provider's real model list during setup
 - **Key validation**: every profile is pinged before it's saved
-- **Token management**: compaction control, effort level, output limits, timeouts
+- **Token management**: set the model's real context window (presets, a custom
+  value, or the window the provider reports), the auto-compaction threshold,
+  effort level, output limits, timeouts
+- **Edit profiles in place**: `clavis edit` changes one setting at a time
+  without touching the stored key
 - **3P provider hygiene**: auto-disables telemetry, beta headers, and attribution
   for third-party providers
 - **Agent-friendly**: headless `add` with flags, `--json` output, stable exit
@@ -135,6 +139,9 @@ clavis deepseek -- --dangerously-skip-permissions
 # Check a profile is set up and runnable (pings every model tier)
 clavis test deepseek
 
+# Change a setting afterwards (context window, models, effort, key, …)
+clavis edit deepseek
+
 # List profiles
 clavis list
 ```
@@ -147,6 +154,7 @@ clavis list
 | `clavis <name> [args...]` | Quick launch a profile (args after `--` go to claude) |
 | `clavis add` | Create a new profile (interactive wizard) |
 | `clavis add --provider … --model … --key …` | Create a profile headlessly (see `clavis add --help`) |
+| `clavis edit [name]` | Change an existing profile's settings (picker if no name) |
 | `clavis list` / `ls` | List all profiles (`--json` for machine output) |
 | `clavis remove <name>` / `rm` | Delete a profile (`-f` to skip confirm) |
 | `clavis providers` | Show built-in provider catalog (`--json`) |
@@ -242,7 +250,7 @@ At launch, clavis:
 
 1. Reads the profile config + API key.
 2. Sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, the model tiers,
-   compaction, and hygiene vars.
+   the context window and compaction vars, and hygiene vars.
 3. **Unsets** `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, and other
    credential vars so nothing from your shell leaks through.
 4. Leaves `CLAUDE_CONFIG_DIR` **inherited** (shared `~/.claude`) unless the

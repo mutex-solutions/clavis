@@ -117,11 +117,27 @@ func EnvVars(p *profile.Profile, apiKey string) map[string]string {
 		set["CLAUDE_CODE_ATTRIBUTION_HEADER"] = "0"
 	}
 
+	// The context window, then the two compaction knobs measured against it.
+	//
+	// These are three different things and only the order above composes
+	// correctly. CLAUDE_CODE_MAX_CONTEXT_TOKENS declares how big the model's
+	// window actually is — what 100% means. CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is a
+	// fraction of that. CLAUDE_CODE_AUTO_COMPACT_WINDOW is an absolute token
+	// count, and Claude Code clamps it to the window it believes the model has.
+	//
+	// For a non-claude-* ID that believed window defaults to 200K, so a large
+	// compaction window on its own is a trap: it quiets the "unrecognised
+	// model" notice while the session is still capped at 200K, and requests get
+	// rejected by the API long before the configured boundary is reached. Set
+	// MaxContextTokens for any model whose real window isn't 200K.
+	if p.MaxContextTokens != nil {
+		set["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = fmt.Sprintf("%d", *p.MaxContextTokens)
+	}
 	if p.AutoCompactPct != nil {
 		set["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = fmt.Sprintf("%d", *p.AutoCompactPct)
 	}
-	if p.ContextWindow != nil {
-		set["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = fmt.Sprintf("%d", *p.ContextWindow)
+	if p.AutoCompactWindow != nil {
+		set["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = fmt.Sprintf("%d", *p.AutoCompactWindow)
 	}
 	if p.MaxOutputTokens != nil {
 		set["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = fmt.Sprintf("%d", *p.MaxOutputTokens)

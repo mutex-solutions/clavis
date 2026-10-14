@@ -90,6 +90,19 @@ func runGet(args []string) {
 	if p.EffortLevel != "" {
 		row("effort", p.EffortLevel)
 	}
+	// The window is shown as a warning when unset, because for a non-claude-*
+	// model it is what decides where auto-compaction fires.
+	if p.MaxContextTokens != nil {
+		row("context", ui.FormatTokens(*p.MaxContextTokens))
+	} else {
+		row("context", ui.WarnStyle.Render("unset — Claude Code assumes 200K for unknown model IDs"))
+	}
+	if p.AutoCompactPct != nil {
+		row("compact at", fmt.Sprintf("%d%% of the window", *p.AutoCompactPct))
+	}
+	if p.AutoCompactWindow != nil {
+		row("compact at", ui.FormatTokens(*p.AutoCompactWindow)+" tokens")
+	}
 	if p.IsolatedConfig {
 		row("config", "isolated")
 	} else {

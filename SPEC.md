@@ -174,11 +174,14 @@ type Profile struct {
     SubagentModel string `json:"subagent_model,omitempty"` // → CLAUDE_CODE_SUBAGENT_MODEL
 
     // ── Token Budget ──
-    ContextWindow   *int   `json:"context_window,omitempty"`    // → CLAUDE_CODE_AUTO_COMPACT_WINDOW
-    AutoCompactPct  *int   `json:"auto_compact_pct,omitempty"`  // → CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (only lowers threshold)
-    MaxOutputTokens *int   `json:"max_output_tokens,omitempty"` // → CLAUDE_CODE_MAX_OUTPUT_TOKENS
-    EffortLevel     string `json:"effort_level,omitempty"`      // → CLAUDE_CODE_EFFORT_LEVEL ("low"|"medium"|"high"|"xhigh"|"max"|"auto")
-    DisableThinking bool   `json:"disable_thinking,omitempty"`  // → CLAUDE_CODE_DISABLE_THINKING (gateway compat)
+    // Claude Code knows windows only for claude-* IDs; for anything else it
+    // assumes 200K and says so. MaxContextTokens declares the real one.
+    MaxContextTokens  *int `json:"max_context_tokens,omitempty"`  // → CLAUDE_CODE_MAX_CONTEXT_TOKENS (what 100% is)
+    AutoCompactWindow *int `json:"auto_compact_window,omitempty"` // → CLAUDE_CODE_AUTO_COMPACT_WINDOW (absolute token count; clamped to the window above)
+    AutoCompactPct    *int `json:"auto_compact_pct,omitempty"`    // → CLAUDE_AUTOCOMPACT_PCT_OVERRIDE (share of that window; only lowers threshold)
+    MaxOutputTokens   *int `json:"max_output_tokens,omitempty"`   // → CLAUDE_CODE_MAX_OUTPUT_TOKENS
+    EffortLevel       string `json:"effort_level,omitempty"`      // → CLAUDE_CODE_EFFORT_LEVEL ("low"|"medium"|"high"|"xhigh"|"max"|"auto")
+    DisableThinking   bool   `json:"disable_thinking,omitempty"`  // → CLAUDE_CODE_DISABLE_THINKING (gateway compat)
 
     // ── Resilience ──
     TimeoutMs *int `json:"timeout_ms,omitempty"` // → API_TIMEOUT_MS (default 600000)
@@ -298,6 +301,25 @@ $ clavis add
   [ ] Minimal mode (--bare)
   [ ] Disable attribution header
 
+  Advanced configuration?
+  Context window, effort, thinking, compaction, config isolation. esc = go back.
+    Yes, customize          No, use defaults   ← the default
+
+  Context window
+  Your model's real window, in tokens. Claude Code only knows claude-* IDs;
+  for anything else it assumes 200K and says so.
+  > 128K  (detected from provider)
+    200K  (Claude Code's default guess)
+    256K
+    512K
+    1M
+    Provider default — let Claude Code guess
+    Custom…
+
+  Auto-compact threshold (%)
+  Lower = compact sooner. Default: 80%. Empty = leave unset.
+  > 80
+
   ✓ Key valid (200 OK, 142ms)
   ✓ Profile "deepseek" saved
 ```
@@ -305,6 +327,10 @@ $ clavis add
 - Each step renders inline, scrolls naturally
 - Tier selects pre-populated from catalog `tierHints`
 - Optional tiers default to "(same as sonnet)"
+- The context-window screen lists whatever windows the provider published for
+  the chosen models (first, marked "detected from provider"), then the presets,
+  "Provider default", and a validated Custom… entry
+- Advanced steps are shown one at a time only after "Yes, customize"
 - Validation ping runs on confirm, shows result inline
 
 ### 4.3 List view (`clavis list`)
@@ -334,6 +360,48 @@ $ echo "1" | clavis add
   Select [default: 1]:
 ```
 
+### 4.5 Edit profile (`clavis edit [name]`)
+
+With no name, a picker; otherwise straight into a menu that loops until Done:
+
+```
+$ clavis edit deepseek
+
+  Edit profile
+
+    Name           deepseek
+    Provider       deepseek
+    Base URL       https://api.deepseek.com/anthropic
+    Main model     deepseek-v4-pro
+    Reasoning      same as main (deepseek-v4-pro)
+    Fast           deepseek-v4-flash
+    Subagent       same as main (deepseek-v4-pro)
+    Context        128K
+    Compacts at    80% of the window
+    Thinking       enabled
+    Config         shared with ~/.claude
+    Mode           full
+
+  > Context window
+    Models (per tier)
+    Effort level
+    Thinking tokens
+    Auto-compact threshold
+    Config isolation
+    Minimal mode (--bare)
+    API key
+    Done — save
+```
+
+- The summary above the menu re-renders after every change, so each edit is
+  visible before it is committed
+- Each row opens the same widget `clavis add` uses (shared prompts), pre-filled
+  with the profile's current value
+- Nothing is written until **Done — save**; esc anywhere discards the session
+- The stored key is untouched unless the API key row is used, in which case a
+  new key is validated before it replaces the old one
+- Reached from the profile selector too (`── edit a profile ──`)
+
 ---
 
 ## 5. Launching Claude Code
@@ -356,8 +424,9 @@ ANTHROPIC_DEFAULT_HAIKU_MODEL=<haiku_model || sonnet_model>
 CLAUDE_CODE_SUBAGENT_MODEL=<subagent_model || sonnet_model>
 
 # ── Set if profile has values ──
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=<max_context_tokens>
+CLAUDE_CODE_AUTO_COMPACT_WINDOW=<auto_compact_window>
 CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=<auto_compact_pct>
-CLAUDE_CODE_AUTO_COMPACT_WINDOW=<context_window>
 CLAUDE_CODE_MAX_OUTPUT_TOKENS=<max_output_tokens>
 CLAUDE_CODE_EFFORT_LEVEL=<effort_level>
 CLAUDE_CODE_DISABLE_THINKING=1
@@ -535,8 +604,10 @@ clavis/
 ### v0.2
 - [ ] Custom provider (`clavis add` → "Custom..." prompts for base URL)
 - [ ] Profile export/import (share config without key)
-- [ ] `clavis edit` — modify an existing profile
+- [x] `clavis edit` — modify an existing profile
 - [ ] Minimal mode (--bare) toggle per profile
+- [x] Context window per profile (`max_context_tokens`), auto-detected from the
+      provider's model list where it reports one
 
 ### v0.3
 - [ ] Goreleaser + Homebrew tap
@@ -561,8 +632,9 @@ usage in tokamak CLI.
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `sonnet_model` | — | Daily driver (required) |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `haiku_model` | falls back to sonnet | Fast/cheap background |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | `subagent_model` | falls back to sonnet | Background agents |
-| `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | `auto_compact_pct` | unset | Only LOWERS threshold. 80 = compact at 80% |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `context_window` | unset | Context window size for compaction math |
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | `max_context_tokens` | unset (200K) | The model's real window — what 100% is. Without it Claude Code assumes 200K for non-`claude-*` IDs and warns that it does |
+| `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | `auto_compact_pct` | unset | Only LOWERS threshold. 80 = compact at 80% of the window |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `auto_compact_window` | unset | Absolute token count for compaction. Claude Code **clamps it to the window it believes the model has**, so on its own it cannot raise the effective window |
 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` | `max_output_tokens` | unset | Default 32K for unknown models. Higher = less context before compaction |
 | `CLAUDE_CODE_EFFORT_LEVEL` | `effort_level` | unset | String: low/medium/high/xhigh/max/auto |
 | `CLAUDE_CODE_DISABLE_THINKING` | `disable_thinking` | unset | Gateway compat: omits thinking param. Not a true thinking kill switch |
