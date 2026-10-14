@@ -163,12 +163,11 @@ func TestBuildEnvAnthropicNoHygiene(t *testing.T) {
 		SonnetModel: "claude-sonnet-5",
 	}
 
-	env, err := buildEnv(p, "key")
-	if err != nil {
-		t.Fatalf("buildEnv() error: %v", err)
-	}
-
-	m := envToMap(env)
+	// Assert against EnvVars (the keys clavis decides on) rather than buildEnv,
+	// which merges in the ambient environment. Claude Code itself exports both
+	// of these, so running the suite from inside a Claude Code session would
+	// otherwise fail here for reasons that have nothing to do with clavis.
+	m := EnvVars(p, "key")
 
 	if _, exists := m["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"]; exists {
 		t.Error("anthropic should not set NonessentialTraffic by default")
@@ -180,21 +179,23 @@ func TestBuildEnvAnthropicNoHygiene(t *testing.T) {
 
 func TestBuildEnvOptionalFields(t *testing.T) {
 	compactPct := 80
-	contextWindow := 128000
+	autoCompactWindow := 120000
+	maxContext := 128000
 	maxOutput := 16384
 	timeout := 3000000
 
 	p := &profile.Profile{
-		Name:            "test",
-		ProviderID:      "deepseek",
-		BaseURL:         "https://api.deepseek.com/anthropic",
-		SonnetModel:     "model",
-		AutoCompactPct:  &compactPct,
-		ContextWindow:   &contextWindow,
-		MaxOutputTokens: &maxOutput,
-		TimeoutMs:       &timeout,
-		EffortLevel:     "high",
-		DisableThinking: true,
+		Name:              "test",
+		ProviderID:        "deepseek",
+		BaseURL:           "https://api.deepseek.com/anthropic",
+		SonnetModel:       "model",
+		AutoCompactPct:    &compactPct,
+		AutoCompactWindow: &autoCompactWindow,
+		MaxContextTokens:  &maxContext,
+		MaxOutputTokens:   &maxOutput,
+		TimeoutMs:         &timeout,
+		EffortLevel:       "high",
+		DisableThinking:   true,
 	}
 
 	env, err := buildEnv(p, "key")
@@ -207,8 +208,14 @@ func TestBuildEnvOptionalFields(t *testing.T) {
 	if got := m["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"]; got != "80" {
 		t.Errorf("AutoCompactPct = %q, want '80'", got)
 	}
-	if got := m["CLAUDE_CODE_AUTO_COMPACT_WINDOW"]; got != "128000" {
-		t.Errorf("ContextWindow = %q, want '128000'", got)
+	// The real window must be declared, or Claude Code assumes 200K for a
+	// non-claude-* model ID and the compaction knobs below measure against a
+	// fantasy total.
+	if got := m["CLAUDE_CODE_MAX_CONTEXT_TOKENS"]; got != "128000" {
+		t.Errorf("MaxContextTokens = %q, want '128000'", got)
+	}
+	if got := m["CLAUDE_CODE_AUTO_COMPACT_WINDOW"]; got != "120000" {
+		t.Errorf("AutoCompactWindow = %q, want '120000'", got)
 	}
 	if got := m["CLAUDE_CODE_MAX_OUTPUT_TOKENS"]; got != "16384" {
 		t.Errorf("MaxOutputTokens = %q, want '16384'", got)

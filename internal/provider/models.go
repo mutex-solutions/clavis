@@ -70,10 +70,17 @@ func fetch(url, apiKey string) ([]ModelInfo, error) {
 	}
 
 	limited := io.LimitReader(resp.Body, 1<<20)
+	return decodeModels(limited)
+}
+
+// decodeModels reads the {"data": [...]} envelope that both the OpenAI-style
+// and Anthropic-style model listings use. Split out from fetch so the field
+// shapes can be tested without a network round-trip.
+func decodeModels(r io.Reader) ([]ModelInfo, error) {
 	var result struct {
 		Data []ModelInfo `json:"data"`
 	}
-	if err := json.NewDecoder(limited).Decode(&result); err != nil {
+	if err := json.NewDecoder(r).Decode(&result); err != nil {
 		return nil, fmt.Errorf("parse models: %w", err)
 	}
 

@@ -26,7 +26,20 @@ type Profile struct {
 	SubagentModel string `json:"subagent_model,omitempty"`
 
 	// Token Budget
-	ContextWindow   *int   `json:"context_window,omitempty"`
+	//
+	// MaxContextTokens is the model's real context window. Claude Code only
+	// recognises claude-* model IDs; for anything else it assumes 200K and warns
+	// that it's guessing. Setting this tells it the truth, which is what makes
+	// compaction fire at the right point. It is the total, not a threshold.
+	MaxContextTokens *int `json:"max_context_tokens,omitempty"`
+	// AutoCompactWindow is the absolute token count at which compaction fires.
+	// Claude Code caps it at the model's context window, so it can only tune
+	// *within* MaxContextTokens — it cannot declare a larger model. On its own
+	// it quiets the "unrecognised model" notice without raising the window
+	// Claude Code assumes, which is why it isn't a substitute for the field
+	// above.
+	AutoCompactWindow *int `json:"auto_compact_window,omitempty"`
+	// AutoCompactPct is the same threshold as a percentage of the window.
 	AutoCompactPct  *int   `json:"auto_compact_pct,omitempty"`
 	MaxOutputTokens *int   `json:"max_output_tokens,omitempty"`
 	EffortLevel     string `json:"effort_level,omitempty"`
