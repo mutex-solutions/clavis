@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -17,6 +16,19 @@ import (
 // errBack signals that the user wants to go to the previous step.
 var errBack = errors.New("go back")
 var errCancel = errors.New("cancel")
+
+// minFormWidth is the narrowest terminal a form pretends to have.
+//
+// A few columns is not enough room to render one, and huh's layout maths goes
+// negative: at a terminal width of 4 or less the textinput huh builds ends up
+// with a width of -2 or less, and bubbles' textinput does
+// `make([]rune, m.Width+1)` — a panic ("makeslice: len out of range"). bubbletea
+// catches that panic but then returns a nil model, on which huh panics too, so
+// the user sees two panics and no hint of the real cause. Widening the message
+// is more honest than a crash: the render is still a mess this narrow, it just
+// no longer dies. Any input with a Placeholder hits this, so the guard belongs
+// here rather than on the free-text path that first surfaced it.
+const minFormWidth = 8
 
 // clearScreen clears the terminal and moves cursor to top-left.
 func clearScreen() {
@@ -43,12 +55,7 @@ func runForm(form *huh.Form) error {
 	interrupted := false
 	err := form.
 		WithKeyMap(km).
-		WithProgramOptions(stdinTTY(), tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
-			if k, ok := msg.(tea.KeyMsg); ok && k.String() == "ctrl+c" {
-				interrupted = true
-			}
-			return msg
-		})).
+		WithProgramOptions(stdinTTY(), tea.WithFilter(formFilter(&interrupted))).
 		Run()
 
 	if interrupted {
@@ -58,6 +65,26 @@ func runForm(form *huh.Form) error {
 		os.Exit(130)
 	}
 	return err
+}
+
+// formFilter is runForm's message filter: it flags Ctrl+C (see runForm) and
+// widens the reported terminal size past minFormWidth. It takes a pointer for
+// the flag so runForm can read it after Run returns.
+func formFilter(interrupted *bool) func(tea.Model, tea.Msg) tea.Msg {
+	return func(_ tea.Model, msg tea.Msg) tea.Msg {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if msg.String() == "ctrl+c" {
+				*interrupted = true
+			}
+		case tea.WindowSizeMsg:
+			if msg.Width < minFormWidth {
+				msg.Width = minFormWidth
+				return msg
+			}
+		}
+		return msg
+	}
 }
 
 type AddResult struct {
@@ -78,8 +105,9 @@ func AddProfile() (*AddResult, error) {
 		opusModel, sonnetModel, haikuModel, subagentModel string
 		effort                                            string
 		noThinking                                        bool
-		compactPct                                        int
+		compactPct                                        *int
 		isolated                                          bool
+		maxContext                                        *int
 	)
 
 	const (
@@ -152,7 +180,7 @@ func AddProfile() (*AddResult, error) {
 			step = stepModelSelect
 
 		case stepModelSelect:
-			o, s, h, sub, err := wizardModelSelect(models)
+			o, s, h, sub, err := wizardModelSelect(models, nil)
 			if err != nil {
 				if isBack(err) {
 					step = stepAlias
@@ -164,7 +192,8 @@ func AddProfile() (*AddResult, error) {
 			step = stepAdvanced
 
 		case stepAdvanced:
-			e, nt, cp, iso, err := wizardAdvanced()
+			e, nt, cp, iso, ctx, err := wizardAdvanced(
+				detectedContextOptions(models, sonnetModel, opusModel, haikuModel, subagentModel))
 			if err != nil {
 				if isBack(err) {
 					step = stepModelSelect
@@ -172,7 +201,7 @@ func AddProfile() (*AddResult, error) {
 				}
 				return nil, err
 			}
-			effort, noThinking, compactPct, isolated = e, nt, cp, iso
+			effort, noThinking, compactPct, isolated, maxContext = e, nt, cp, iso, ctx
 			step = stepConfirm
 
 		case stepConfirm:
@@ -182,6 +211,8 @@ func AddProfile() (*AddResult, error) {
 				Name: alias, ProviderID: providerID, BaseURL: baseURL,
 				OpusModel: opusModel, SonnetModel: sonnetModel,
 				HaikuModel: haikuModel, SubagentModel: subagentModel,
+				MaxContextTokens:           maxContext,
+				AutoCompactPct:             compactPct,
 				DisableNonessentialTraffic: &is3P,
 				DisableExperimentalBetas:   &is3P,
 				DisableAttribution:         &is3P,
@@ -192,9 +223,6 @@ func AddProfile() (*AddResult, error) {
 			}
 			if noThinking {
 				p.DisableThinking = true
-			}
-			if compactPct > 0 {
-				p.AutoCompactPct = &compactPct
 			}
 
 			ok, err := wizardConfirm(p)
@@ -238,6 +266,9 @@ func wizardConfirm(p *profile.Profile) (bool, error) {
 	}
 	if p.SubagentModel != "" && p.SubagentModel != p.SonnetModel {
 		row("Subagent", p.SubagentModel)
+	}
+	if p.MaxContextTokens != nil {
+		row("Context window", FormatTokens(*p.MaxContextTokens))
 	}
 	if p.EffortLevel != "" && p.EffortLevel != "auto" {
 		row("Effort", p.EffortLevel)
@@ -429,7 +460,10 @@ func wizardAlias(providerID string) (string, error) {
 	return alias, nil
 }
 
-func wizardModelSelect(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
+// wizardModelSelect picks the four model tiers. `current` is the profile being
+// edited, or nil when creating one: it decides whether an empty answer means
+// "fall back to sonnet" (new) or "leave this tier alone" (editing).
+func wizardModelSelect(models []provider.ModelInfo, current *profile.Profile) (opus, sonnet, haiku, subagent string, err error) {
 	if len(models) == 0 {
 		o, s, h, sub, e := selectTiersFreeText()
 		return o, s, h, sub, e
@@ -451,116 +485,108 @@ func wizardModelSelect(models []provider.ModelInfo) (opus, sonnet, haiku, subage
 		}
 		return m, m, m, m, nil
 	}
-	return selectTiersDetailed(models)
+	return selectTiersDetailed(models, current)
 }
 
-func wizardAdvanced() (effort string, noThinking bool, compactPct int, isolated bool, err error) {
+// wizardAdvanced walks the optional settings, one per screen, for a new
+// profile. `detected` holds the context windows the provider reported for the
+// models just chosen (empty when it reported none); it only decides which
+// preset the context screen starts on.
+//
+// The prompts themselves live in settings.go. The editor runs them
+// individually rather than in this fixed order, so only this file's caller
+// decides the sequence.
+func wizardAdvanced(detected []int) (effort string, noThinking bool, compactPct *int, isolated bool, ctx *int, err error) {
 	var show bool
 	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Advanced configuration?").
-			Description("Effort, thinking, compaction, config isolation. esc = go back.").
+			Description("Context window, effort, thinking, compaction, config isolation. esc = go back.").
 			Affirmative("Yes, customize").Negative("No, use defaults").Value(&show),
 	))); err != nil {
-		return "", false, 0, false, errBack // esc = back to model selection
+		return "", false, nil, false, nil, errBack // esc = back to model selection
 	}
 	if !show {
-		return "", false, 0, false, nil // "No, use defaults" → proceed with defaults
+		return "", false, nil, false, nil, nil // "No, use defaults" → proceed with defaults
 	}
 
-	// Show each setting on its own screen — one field per huh group renders
-	// cleanly, whereas stacking several fields in one group misaligns them.
-
-	// 1. Effort level
-	effort = "auto"
-	clearScreen()
-	if err := runForm(huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Title("Effort level").
-			Description(DimStyle.Render("esc = go back")).
-			Options(
-				huh.NewOption("auto (model default)", "auto"),
-				huh.NewOption("low — fast, less thorough", "low"),
-				huh.NewOption("medium", "medium"),
-				huh.NewOption("high — thorough reasoning", "high"),
-				huh.NewOption("xhigh — very thorough", "xhigh"),
-				huh.NewOption("max — maximum reasoning depth", "max"),
-			).Value(&effort),
-	))); err != nil {
-		return "", false, 0, false, errBack
+	// 1. Context window. First, because everything below is measured against it.
+	ctx, err = wizardContextWindow(detected, nil)
+	if err != nil {
+		return "", false, nil, false, nil, err
 	}
 
-	// 2. Disable thinking tokens
-	clearScreen()
-	if err := runForm(huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().Title("Disable thinking tokens?").
-			Description("Omit thinking tokens. Needed for providers that don't support them. esc = go back.").
-			Affirmative("Yes, disable").Negative("No").Value(&noThinking),
-	))); err != nil {
-		return "", false, 0, false, errBack
+	// 2. Effort level
+	if effort, err = wizardEffort("auto"); err != nil {
+		return "", false, nil, false, nil, err
 	}
 
-	// 3. Auto-compact threshold
-	var compactStr string
-	clearScreen()
-	if err := runForm(huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Auto-compact threshold (%)").
-			Description("Lower = compact sooner. Default: 80%. Empty = skip. esc = go back.").
-			Placeholder("80").
-			Validate(func(s string) error {
-				if s == "" {
-					return nil
-				}
-				v, err := strconv.Atoi(s)
-				if err != nil || v < 1 || v > 100 {
-					return fmt.Errorf("must be 1–100")
-				}
-				return nil
-			}).Value(&compactStr),
-	))); err != nil {
-		return "", false, 0, false, errBack
-	}
-	if compactStr != "" {
-		compactPct, _ = strconv.Atoi(compactStr)
+	// 3. Disable thinking tokens
+	if noThinking, err = wizardThinking(false); err != nil {
+		return "", false, nil, false, nil, err
 	}
 
-	// 4. Config isolation
-	clearScreen()
-	if err := runForm(huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().Title("Isolate Claude config?").
-			Description("No: share your ~/.claude (MCP servers, agents, memory). Yes: give this profile its own empty config. esc = go back.").
-			Affirmative("Yes, isolate").Negative("No, share ~/.claude").Value(&isolated),
-	))); err != nil {
-		return "", false, 0, false, errBack
+	// 4. Auto-compact threshold
+	if compactPct, err = wizardCompactPct(nil); err != nil {
+		return "", false, nil, false, nil, err
 	}
 
-	return effort, noThinking, compactPct, isolated, nil
+	// 5. Config isolation
+	if isolated, err = wizardIsolation(false); err != nil {
+		return "", false, nil, false, nil, err
+	}
+
+	return effort, noThinking, compactPct, isolated, ctx, nil
 }
 
 func selectOneModel(models []provider.ModelInfo) (string, error) {
 	return RunModelSelect("Select model", models, 5, "", nil)
 }
 
-func selectTiersDetailed(models []provider.ModelInfo) (opus, sonnet, haiku, subagent string, err error) {
+// selectTiersDetailed walks the four tiers. When editing (`current` non-nil)
+// the profile's existing models are floated to the top (★) and the optional
+// tiers offer "keep" rather than "default", so pressing Enter through the flow
+// never silently discards a tier the user already chose.
+func selectTiersDetailed(models []provider.ModelInfo, current *profile.Profile) (opus, sonnet, haiku, subagent string, err error) {
+	var curOpus, curSonnet, curHaiku, curSub string
+	optionalLabel := "(default — use sonnet)"
+	if current != nil {
+		curOpus, curSonnet = current.OpusModel, current.SonnetModel
+		curHaiku, curSub = current.HaikuModel, current.SubagentModel
+		optionalLabel = "(keep — leave this tier unchanged)"
+	}
+
+	opus, err = RunModelSelect("Opus model (hard reasoning)", models, 5, "", []string{curOpus, curSonnet})
+	if err != nil {
+		return
+	}
+
 	// Each tier floats the already-chosen models to the top (★) with the
 	// most recent first, so the natural default is highlighted and one Enter
 	// away — while any model is still reachable by scrolling or typing.
-	opus, err = RunModelSelect("Opus model (hard reasoning)", models, 5, "", nil)
+	sonnet, err = RunModelSelect("Sonnet model (daily driver)", models, 5, "", []string{curSonnet, opus, curOpus})
 	if err != nil {
 		return
 	}
 
-	sonnet, err = RunModelSelect("Sonnet model (daily driver)", models, 5, "", []string{opus})
+	haiku, err = RunModelSelect("Haiku model (fast/cheap)", models, 5, optionalLabel, []string{curHaiku, sonnet, opus})
 	if err != nil {
 		return
 	}
 
-	haiku, err = RunModelSelect("Haiku model (fast/cheap)", models, 5, "(default — use sonnet)", []string{sonnet, opus})
+	subagent, err = RunModelSelect("Subagent model", models, 5, optionalLabel, []string{curSub, sonnet, opus, haiku})
 	if err != nil {
 		return
 	}
 
-	subagent, err = RunModelSelect("Subagent model", models, 5, "(default — use sonnet)", []string{sonnet, opus, haiku})
-	if err != nil {
-		return
+	// An empty answer means "use the fallback" when adding, but "leave it
+	// alone" when editing — otherwise Enter would wipe the existing tier.
+	if current != nil {
+		if haiku == "" {
+			haiku = curHaiku
+		}
+		if subagent == "" {
+			subagent = curSub
+		}
 	}
 
 	return opus, sonnet, haiku, subagent, nil
