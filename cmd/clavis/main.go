@@ -51,6 +51,8 @@ func main() {
 		fmt.Printf("clavis %s\n", Version)
 	case "add":
 		runAddOrHeadless(args[1:])
+	case "edit":
+		runEdit(args[1:])
 	case "list", "ls":
 		if hasFlag(args[1:], "--json") {
 			runListJSON()
@@ -107,6 +109,7 @@ Usage:
   clavis <profile> [args...]  Quick launch a profile
   clavis start [args...]      Open profile selector
   clavis add                  Create a new profile
+  clavis edit [name]          Change an existing profile (context window, models, ...)
   clavis list, ls             List all profiles
   clavis remove, rm <name>    Delete a profile
   clavis providers            Show provider catalog
@@ -159,6 +162,9 @@ func runSelector(extraArgs []string) {
 		launchProfile(result.Profile, extraArgs)
 	case "add":
 		runAdd()
+	case "edit":
+		runEdit(nil)
+		runSelector(extraArgs) // back to the picker, to launch what was just edited
 	case "quit":
 		// do nothing
 	}
@@ -254,6 +260,17 @@ func printLaunchBanner(p *profile.Profile, plan claude.Plan) {
 			ui.DimStyle.Render("default ~/.claude (your MCP servers, agents, memory)"))
 	}
 
+	// Context window: for a non-claude-* model this is the difference between
+	// Claude Code guessing 200K and knowing the truth, so it earns its own line
+	// rather than a spot in the flag list below.
+	if p.MaxContextTokens != nil {
+		fmt.Fprintf(w, "  %s %s\n", ui.DimStyle.Render("context"),
+			ui.FormatTokens(*p.MaxContextTokens))
+	} else {
+		fmt.Fprintf(w, "  %s %s\n", ui.DimStyle.Render("context"),
+			ui.DimStyle.Render("assumed 200K if this model ID is unrecognised — set it with: clavis edit "+p.Name))
+	}
+
 	// clavis-applied launch flags (from the profile).
 	var clavisFlags []string
 	if p.EffortLevel != "" && p.EffortLevel != "auto" {
@@ -264,6 +281,9 @@ func printLaunchBanner(p *profile.Profile, plan claude.Plan) {
 	}
 	if p.AutoCompactPct != nil {
 		clavisFlags = append(clavisFlags, fmt.Sprintf("compact=%d%%", *p.AutoCompactPct))
+	}
+	if p.AutoCompactWindow != nil {
+		clavisFlags = append(clavisFlags, "compact-at="+ui.FormatTokens(*p.AutoCompactWindow))
 	}
 	if p.MinimalMode {
 		clavisFlags = append(clavisFlags, "bare")
