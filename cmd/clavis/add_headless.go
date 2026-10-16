@@ -170,6 +170,19 @@ func runAddOrHeadless(args []string) {
 		fmt.Println(ui.Success("Key valid"))
 	}
 
+	// If the caller didn't state a window, ask the provider for it. Best-effort by
+	// design: a fetch that fails, or a provider that reports nothing, leaves the
+	// window unset exactly as before — an agent running this must not fail because
+	// a model list was unavailable. This is what makes the wizards' "the window
+	// the provider reports" path work headlessly too.
+	if *contextWindow == 0 {
+		if models, err := provider.FetchModels(url, "", apiKey); err == nil {
+			if w := provider.ContextWindowFor(models, *model); w > 0 {
+				*contextWindow = w
+			}
+		}
+	}
+
 	p := &profile.Profile{
 		Name:                       name,
 		ProviderID:                 *providerID,
