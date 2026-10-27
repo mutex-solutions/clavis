@@ -226,8 +226,14 @@ func fetchModelsForEdit(p *profile.Profile, apiKey string) []provider.ModelInfo 
 	if apiKey == "" {
 		return nil
 	}
+	prov, provErr := provider.Get(p.ProviderID)
+	if provErr == nil && len(prov.Models) > 0 {
+		// Subscription endpoints have no listing route; the declared catalogue
+		// is the only honest answer and needs no request.
+		return prov.Models
+	}
 	endpoint := p.BaseURL // provider.ModelsEndpoint falls back to this
-	if prov, err := provider.Get(p.ProviderID); err == nil {
+	if provErr == nil {
 		endpoint = prov.ModelsEndpoint()
 	}
 	res, err := runWithSpinner("Checking the provider…", func() (any, error) {

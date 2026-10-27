@@ -45,7 +45,10 @@ memory, settings) intact while routing to whichever provider you choose.
 - **Secure key storage**: keys in `.env` files (chmod 0600), never in metadata
 - **Shares your `~/.claude` by default**: keep your MCP servers, agents, and
   memory; opt into an isolated config per-profile or per-launch
-- **Live model discovery**: fetches the provider's real model list during setup
+- **Live model discovery**: fetches the provider's real model list during setup,
+  with a static catalogue for subscription endpoints that serve one fixed model
+- **Offers to install Claude Code**: if `claude` is not on PATH, launch prompts
+  for the official per-user installer (no sudo) for your platform
 - **Key validation**: every profile is pinged before it's saved
 - **Token management**: set the model's real context window (presets, a custom
   value, or the window the provider reports), the auto-compaction threshold,
@@ -185,8 +188,18 @@ verbatim to `claude`.
 | Z.ai (Zhipu GLM) | `api.z.ai/api/anthropic` |
 | MiniMax | `api.minimax.io/anthropic` |
 | OpenRouter | `openrouter.ai/api` |
-| Moonshot Kimi | `api.moonshot.ai/anthropic` |
+| Moonshot API (platform key) | `api.moonshot.ai/anthropic` |
+| Kimi Code (subscription) | `api.kimi.ai/coding/`, model `kimi-for-coding` |
 | Custom | *your endpoint* (e.g. Qwen/Alibaba MaaS) |
+
+**Kimi sells two different things and their keys are not interchangeable.**
+The *Moonshot API* is pay-per-token and uses a key from the Kimi Open Platform;
+the *Kimi Code* subscription is flat-rate (quota refreshes weekly) and uses a
+key from the [Kimi Code Console](https://www.kimi.com/code/console). A
+subscription key against `api.moonshot.ai` returns "No models available", and a
+platform key against the coding endpoint is rejected the same way. Pick the
+provider that matches where the key came from. China-based subscribers use
+`api.kimi.com/coding/` instead of `api.kimi.ai`.
 
 Any Anthropic-compatible endpoint works via the **Custom** provider: just
 give it the base URL and key.

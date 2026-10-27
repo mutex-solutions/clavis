@@ -31,10 +31,14 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 	// Build args
 	args := buildArgs(p, extraArgs)
 
-	// Find claude binary
-	claudePath, err := exec.LookPath("claude")
+	// Find claude binary. If it is missing, offer the platform installer rather
+	// than failing with a command the user then has to look up.
+	claudePath, err := FindClaude()
 	if err != nil {
-		return 1, fmt.Errorf("Claude not found — install with: npm install -g @anthropic-ai/claude-code")
+		claudePath, err = OfferInstall()
+		if err != nil {
+			return 1, err
+		}
 	}
 
 	cmd := exec.Command(claudePath, args...)
