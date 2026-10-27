@@ -116,6 +116,9 @@ func EditProfile(p *profile.Profile, apiKey string) (*EditResult, error) {
 			}
 			edited.OpusModel, edited.SonnetModel = o, s
 			edited.HaikuModel, edited.SubagentModel = h, sub
+			// Binding models ends "pick at every launch"; the two states are
+			// mutually exclusive (Profile.Validate enforces it).
+			edited.ModelMode = ""
 
 		case editEffort:
 			e, err := wizardEffort(edited.EffortLevel)
@@ -185,10 +188,14 @@ func printEditSummary(p *profile.Profile) {
 	row("Name", p.Name)
 	row("Provider", p.ProviderID)
 	row("Base URL", p.BaseURL)
-	row("Main model", p.SonnetModel)
-	tier("Reasoning", p.OpusModel, p.SonnetModel)
-	tier("Fast", p.HaikuModel, p.SonnetModel)
-	tier("Subagent", p.SubagentModel, p.SonnetModel)
+	if p.PicksModelAtLaunch() {
+		row("Main model", "pick at every launch (not bound)")
+	} else {
+		row("Main model", p.SonnetModel)
+		tier("Reasoning", p.OpusModel, p.SonnetModel)
+		tier("Fast", p.HaikuModel, p.SonnetModel)
+		tier("Subagent", p.SubagentModel, p.SonnetModel)
+	}
 
 	if p.MaxContextTokens != nil {
 		row("Context", FormatTokens(*p.MaxContextTokens))
@@ -251,7 +258,11 @@ func fetchModelsForEdit(p *profile.Profile, apiKey string) []provider.ModelInfo 
 func SelectProfileForEdit(profiles []*profile.Profile) (string, error) {
 	options := make([]huh.Option[string], 0, len(profiles))
 	for _, p := range profiles {
-		label := fmt.Sprintf("%-14s %s", p.Name, p.SonnetModel)
+		model := p.SonnetModel
+		if p.PicksModelAtLaunch() {
+			model = "(pick each launch)"
+		}
+		label := fmt.Sprintf("%-14s %s", p.Name, model)
 		if p.MaxContextTokens != nil {
 			label += DimStyle.Render("  " + FormatTokens(*p.MaxContextTokens))
 		}

@@ -24,6 +24,11 @@ type Profile struct {
 	OpusModel     string `json:"opus_model,omitempty"`
 	HaikuModel    string `json:"haiku_model,omitempty"`
 	SubagentModel string `json:"subagent_model,omitempty"`
+	// ModelMode is empty when the models above are bound to tiers. "pick" means
+	// the profile deliberately binds nothing: every launch asks which model from
+	// the provider to use for that session, and detects its context window then.
+	// Such a profile is interactive by design and cannot be used headlessly.
+	ModelMode string `json:"model_mode,omitempty"`
 
 	// Token Budget
 	//
@@ -132,14 +137,27 @@ func (p *Profile) Validate() error {
 	if p.ProviderID == "" {
 		return fmt.Errorf("provider_id is required")
 	}
-	if p.SonnetModel == "" {
-		return fmt.Errorf("sonnet_model is required")
+	switch p.ModelMode {
+	case "":
+		if p.SonnetModel == "" {
+			return fmt.Errorf("sonnet_model is required")
+		}
+	case "pick":
+		if p.SonnetModel != "" || p.OpusModel != "" || p.HaikuModel != "" || p.SubagentModel != "" {
+			return fmt.Errorf("model_mode pick cannot be combined with bound models")
+		}
+	default:
+		return fmt.Errorf("unknown model_mode %q (only \"pick\" is supported)", p.ModelMode)
 	}
 	if p.BaseURL == "" {
 		return fmt.Errorf("base_url is required")
 	}
 	return nil
 }
+
+// PicksModelAtLaunch reports whether the profile asks for a model every time it
+// is launched instead of binding one.
+func (p *Profile) PicksModelAtLaunch() bool { return p.ModelMode == "pick" }
 
 // Reserved profile names that conflict with clavis subcommands.
 var reserved = map[string]bool{

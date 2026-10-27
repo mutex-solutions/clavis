@@ -47,6 +47,11 @@ memory, settings) intact while routing to whichever provider you choose.
   memory; opt into an isolated config per-profile or per-launch
 - **Live model discovery**: fetches the provider's real model list during setup,
   with a static catalogue for endpoints that have no listing
+- **Pick a model at every launch**: create a profile with `--model-mode pick`
+  (or choose it in the wizard) and clavis asks which of the provider's models to
+  use each time, reading that model's context window from the provider on the
+  spot. Nothing is bound and nothing is saved, so the next launch asks again.
+  These profiles are interactive only, by design
 - **Offers to install Claude Code**: if `claude` is not on PATH, launch prompts
   for the official per-user installer (no sudo) for your platform
 - **Key validation**: every profile is pinged before it's saved
@@ -201,9 +206,10 @@ platform key against the coding endpoint is rejected the same way. Pick the
 provider that matches where the key came from. China-based subscribers use
 `api.kimi.com/coding/` instead of `api.kimi.ai`.
 
-The coding endpoint lists its own models at `/coding/v1/models`. As of
-2026-10-27 that reported `kimi-for-coding` with a **1M** context window,
-reasoning, and image/video input, so the wizard picks the window up live instead
+The coding endpoint lists its own models at `/coding/v1/models`. On 2026-10-27
+it reported six: `kimi-for-coding`, `kimi-for-coding-highspeed`, `k3`, `k3-256k`,
+`k3.1-pro` and `k3.1-pro-highspeed`, with 1M or 256K windows depending on the
+model. The wizard and the launch picker therefore read the window live instead
 of trusting a figure from the docs.
 
 Any Anthropic-compatible endpoint works via the **Custom** provider: just

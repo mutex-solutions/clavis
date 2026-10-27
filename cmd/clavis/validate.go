@@ -29,6 +29,21 @@ func runValidate(args []string) {
 		os.Exit(exitNotFound)
 	}
 
+	if p.PicksModelAtLaunch() {
+		fmt.Printf("  Listing models from %s (%s)... ", p.ProviderID, p.BaseURL)
+		models, err := modelCatalogue(p, apiKey)
+		if err != nil {
+			fmt.Println(ui.Error(err.Error()))
+			os.Exit(exitValidation)
+		}
+		if len(models) == 0 {
+			fmt.Println(ui.Error("the provider reported no models to pick from"))
+			os.Exit(exitValidation)
+		}
+		fmt.Println(ui.Success(fmt.Sprintf("%d models", len(models))))
+		return
+	}
+
 	fmt.Printf("  Pinging %s (%s)... ", p.ProviderID, p.BaseURL)
 	if err := provider.Ping(p.BaseURL, apiKey, p.SonnetModel); err != nil {
 		fmt.Println(ui.Error(err.Error()))

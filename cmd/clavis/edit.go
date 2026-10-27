@@ -83,6 +83,11 @@ The stored API key is left untouched unless you replace it.`)
 	// so a typo can't cost the user their other work.
 	if result.APIKey != "" {
 		if err := ui.Spinner("Validating key…", func() error {
+			if result.Profile.PicksModelAtLaunch() {
+				// No bound model to ping; the listing is the key check.
+				_, err := modelCatalogue(result.Profile, result.APIKey)
+				return err
+			}
 			return provider.Ping(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel)
 		}); err != nil {
 			fmt.Println(ui.Warn(fmt.Sprintf("Key validation failed: %v", err)))

@@ -77,7 +77,11 @@ func runGet(args []string) {
 	fmt.Println("  " + ui.TitleStyle.Render(p.Name))
 	row("provider", p.ProviderID)
 	row("base url", p.BaseURL)
-	row("model", p.SonnetModel)
+	if p.PicksModelAtLaunch() {
+		row("model", "pick at every launch (not bound)")
+	} else {
+		row("model", p.SonnetModel)
+	}
 	if p.OpusModel != "" {
 		row("reasoning", p.OpusModel)
 	}
