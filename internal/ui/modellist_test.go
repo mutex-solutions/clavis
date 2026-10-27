@@ -206,3 +206,18 @@ func TestUpdate_ScrollOffsetTracksCursor(t *testing.T) {
 		t.Errorf("offset=%d, want 1 (viewport followed cursor)", m.offset)
 	}
 }
+
+func TestBuildSelectItems_ShowsContextWindow(t *testing.T) {
+	window := 1048576
+	items := buildSelectItems([]provider.ModelInfo{
+		{ID: "big", OwnedBy: "acme", MaxInputTokens: &window},
+		{ID: "unknown", OwnedBy: "acme"},
+	}, "", nil)
+
+	if items[0].owner != "acme · 1M" {
+		t.Errorf("owner = %q, want the reported window appended", items[0].owner)
+	}
+	if items[1].owner != "acme" {
+		t.Errorf("owner = %q, want no window suffix when none is reported", items[1].owner)
+	}
+}
