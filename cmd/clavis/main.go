@@ -269,12 +269,12 @@ func bindModelAtLaunch(p *profile.Profile, apiKey string) error {
 		return fmt.Errorf("the provider reported no models — bind one with: clavis edit %s", p.Name)
 	}
 
-	chosen, err := ui.RunModelSelect("Select model for this session", models, 10, "", []string{p.SonnetModel})
-	if err != nil || chosen == "" {
+	sel, err := ui.PickLaunchModels(models)
+	if err != nil {
 		return fmt.Errorf("model selection cancelled")
 	}
 
-	applyPickedModel(p, models, chosen)
+	applyLaunchSelection(p, sel)
 	return nil
 }
 
@@ -288,25 +288,17 @@ func modelCatalogue(p *profile.Profile, apiKey string) ([]provider.ModelInfo, er
 	return provider.FetchModels(p.BaseURL, p.BaseURL, apiKey)
 }
 
-// applyPickedModel moves the profile to chosen. Tiers that followed the old
-// primary follow the new one; a tier deliberately set to something else keeps
-// its model. The context window comes from the provider's own listing when it
-// reports one, and is cleared when it does not: a window belonging to the
-// previous model is worse than no window, because Claude Code would size its
-// compaction to the wrong number.
-func applyPickedModel(p *profile.Profile, models []provider.ModelInfo, chosen string) {
-	old := p.SonnetModel
-	p.SonnetModel = chosen
-	for _, tier := range []*string{&p.OpusModel, &p.HaikuModel, &p.SubagentModel} {
-		if *tier == old || *tier == "" {
-			*tier = chosen
-		}
-	}
-	if w := provider.ContextWindowFor(models, chosen); w > 0 {
-		p.MaxContextTokens = &w
-	} else {
-		p.MaxContextTokens = nil
-	}
+// applyLaunchSelection binds the launch choices to a session copy of the
+// profile. ModelMode is cleared because the profile is bound for this launch,
+// which is also what Profile.Validate requires; nothing is written to disk, so
+// the stored profile stays in pick mode and asks again next time.
+func applyLaunchSelection(p *profile.Profile, sel *ui.LaunchSelection) {
+	p.ModelMode = ""
+	p.SonnetModel = sel.Sonnet
+	p.OpusModel = sel.Opus
+	p.HaikuModel = sel.Haiku
+	p.SubagentModel = sel.Subagent
+	p.MaxContextTokens = sel.MaxContext
 }
 
 // printLaunchBanner shows what clavis is about to do before handing off to
