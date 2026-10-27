@@ -157,9 +157,9 @@ func AddProfile() (*AddResult, error) {
 			var m []provider.ModelInfo
 			var err error
 			if len(prov.Models) > 0 {
-				// Endpoints like the Kimi Code subscription serve one fixed
-				// model and have no listing route; use the declared catalogue
-				// rather than asking for a list that cannot exist.
+				// Some subscription endpoints serve one fixed model and have no
+				// listing route; use the declared catalogue rather than asking
+				// for a list that cannot exist.
 				m, err = prov.Catalogue(apiKey)
 			} else {
 				m, err = wizardModels(baseURL, prov.ModelsEndpoint(), apiKey)

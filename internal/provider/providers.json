@@ -65,17 +65,12 @@
     "id": "kimi-code",
     "displayName": "Kimi Code (subscription)",
     "baseUrl": "https://api.kimi.ai/coding/",
-    "models": [
-      {
-        "id": "kimi-for-coding",
-        "max_input_tokens": 262144
-      }
-    ],
     "auth": {
       "needsKey": true,
-      "keyUrl": "https://www.kimi.com/code/console",
+      "keyUrl": "https://www.kimi.ai/code/console",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
-    }
+    },
+    "modelsUrl": "https://api.kimi.ai/coding/v1/models"
   },
   {
     "id": "custom",
