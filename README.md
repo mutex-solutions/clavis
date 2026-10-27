@@ -49,9 +49,10 @@ memory, settings) intact while routing to whichever provider you choose.
   with a static catalogue for endpoints that have no listing
 - **Pick a model at every launch**: create a profile with `--model-mode pick`
   (or choose it in the wizard) and clavis asks which of the provider's models to
-  use each time, reading that model's context window from the provider on the
-  spot. Nothing is bound and nothing is saved, so the next launch asks again.
-  These profiles are interactive only, by design
+  use each time. The list shows each model's reported context window; you can
+  apply one model to every tier or choose a model per tier, and override the
+  detected window. Nothing is bound and nothing is saved, so the next launch
+  asks again. These profiles are interactive only, by design
 - **Offers to install Claude Code**: if `claude` is not on PATH, launch prompts
   for the official per-user installer (no sudo) for your platform
 - **Key validation**: every profile is pinged before it's saved
