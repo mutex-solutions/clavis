@@ -64,6 +64,10 @@ Examples:
 		fmt.Fprintln(os.Stderr, ui.Error(err.Error()))
 		os.Exit(exitNotFound)
 	}
+	if p.PicksModelAtLaunch() {
+		fmt.Fprintln(os.Stderr, ui.Error("profile \""+name+"\" picks its model at every launch, so there is no fixed model to export; bind one with: clavis edit "+name))
+		os.Exit(exitUsage)
+	}
 	apiKey, err := profile.LoadKey(name)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, ui.Error(err.Error()))

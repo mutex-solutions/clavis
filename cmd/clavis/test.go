@@ -63,6 +63,8 @@ func runTest(args []string) {
 
 	if err := p.Validate(); err != nil {
 		add("profile valid", false, err.Error())
+	} else if p.PicksModelAtLaunch() {
+		add("profile valid", true, fmt.Sprintf("provider=%s model=pick at launch", p.ProviderID))
 	} else {
 		add("profile valid", true, fmt.Sprintf("provider=%s model=%s", p.ProviderID, p.SonnetModel))
 	}
@@ -83,17 +85,29 @@ func runTest(args []string) {
 		add("claude installed", true, path)
 	}
 
-	// 4. Each distinct model tier answers a live ping.
-	seen := map[string]bool{}
-	for _, m := range []string{p.SonnetModel, p.ResolvedOpus(), p.ResolvedHaiku(), p.ResolvedSubagent()} {
-		if m == "" || seen[m] {
-			continue
-		}
-		seen[m] = true
-		if err := provider.Ping(p.BaseURL, apiKey, m); err != nil {
-			add("ping "+m, false, err.Error())
+	// 4. Each distinct model tier answers a live ping. A "pick" profile has no
+	// model to ping; what can be checked is that the launch picker will have a
+	// list to offer.
+	if p.PicksModelAtLaunch() {
+		if models, err := modelCatalogue(p, apiKey); err != nil {
+			add("model catalogue", false, err.Error())
+		} else if len(models) == 0 {
+			add("model catalogue", false, "the provider reported no models")
 		} else {
-			add("ping "+m, true, "")
+			add("model catalogue", true, fmt.Sprintf("%d models to pick from", len(models)))
+		}
+	} else {
+		seen := map[string]bool{}
+		for _, m := range []string{p.SonnetModel, p.ResolvedOpus(), p.ResolvedHaiku(), p.ResolvedSubagent()} {
+			if m == "" || seen[m] {
+				continue
+			}
+			seen[m] = true
+			if err := provider.Ping(p.BaseURL, apiKey, m); err != nil {
+				add("ping "+m, false, err.Error())
+			} else {
+				add("ping "+m, true, "")
+			}
 		}
 	}
 

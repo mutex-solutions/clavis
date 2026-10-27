@@ -38,7 +38,8 @@ func runAddOrHeadless(args []string) {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	providerID := fs.String("provider", "", "Provider ID (deepseek, anthropic, zai, ...) — required")
-	model := fs.String("model", "", "Primary model, the daily driver — required")
+	model := fs.String("model", "", "Primary model, the daily driver — required unless --model-mode pick")
+	modelMode := fs.String("model-mode", "", "Set to 'pick' to choose a model at every launch instead of binding one")
 	reasoningModel := fs.String("reasoning-model", "", "Hard-reasoning model (falls back to --model)")
 	fastModel := fs.String("fast-model", "", "Fast/cheap model (falls back to --model)")
 	subagentModel := fs.String("subagent-model", "", "Subagent model (falls back to --model)")
@@ -95,8 +96,14 @@ func runAddOrHeadless(args []string) {
 	if *providerID == "" {
 		fail(exitUsage, "provider", "--provider is required")
 	}
-	if *model == "" {
-		fail(exitUsage, "model", "--model is required")
+	if *modelMode == "pick" {
+		if *model != "" || *reasoningModel != "" || *fastModel != "" || *subagentModel != "" {
+			fail(exitUsage, "model-mode", "--model-mode pick cannot be combined with --model/--reasoning-model/--fast-model/--subagent-model")
+		}
+	} else if *modelMode != "" {
+		fail(exitUsage, "model-mode", `--model-mode only accepts "pick"`)
+	} else if *model == "" {
+		fail(exitUsage, "model", "--model is required (or pass --model-mode pick)")
 	}
 
 	// Resolve the key from exactly one source, in order of increasing safety.
@@ -160,14 +167,20 @@ func runAddOrHeadless(args []string) {
 	noBetas := prov.ID != "anthropic"
 	noAttr := prov.ID != "anthropic"
 
-	if !*asJSON {
-		fmt.Print(ui.DimStyle.Render("  Validating... "))
-	}
-	if err := provider.Ping(url, apiKey, *model); err != nil {
-		fail(exitValidation, "key", fmt.Sprintf("key validation failed: %v", err))
-	}
-	if !*asJSON {
-		fmt.Println(ui.Success("Key valid"))
+	if *modelMode == "pick" {
+		if !*asJSON {
+			fmt.Println(ui.DimStyle.Render("  Model is chosen at launch; nothing to validate yet."))
+		}
+	} else {
+		if !*asJSON {
+			fmt.Print(ui.DimStyle.Render("  Validating... "))
+		}
+		if err := provider.Ping(url, apiKey, *model); err != nil {
+			fail(exitValidation, "key", fmt.Sprintf("key validation failed: %v", err))
+		}
+		if !*asJSON {
+			fmt.Println(ui.Success("Key valid"))
+		}
 	}
 
 	// If the caller didn't state a window, ask the provider for it. Best-effort by
@@ -175,7 +188,7 @@ func runAddOrHeadless(args []string) {
 	// window unset exactly as before — an agent running this must not fail because
 	// a model list was unavailable. This is what makes the wizards' "the window
 	// the provider reports" path work headlessly too.
-	if *contextWindow == 0 {
+	if *contextWindow == 0 && *modelMode != "pick" {
 		var models []provider.ModelInfo
 		var err error
 		if len(prov.Models) > 0 {
@@ -201,6 +214,7 @@ func runAddOrHeadless(args []string) {
 		OpusModel:                  *reasoningModel,
 		HaikuModel:                 *fastModel,
 		SubagentModel:              *subagentModel,
+		ModelMode:                  *modelMode,
 		DisableNonessentialTraffic: &noTraffic,
 		DisableExperimentalBetas:   &noBetas,
 		DisableAttribution:         &noAttr,
@@ -264,6 +278,9 @@ Headless (for agents/CI — pass any flag to trigger this mode):
 Required:
   --provider <id>    Provider ID. See: clavis providers [--json]
   --model <id>       Primary model (the daily driver)
+  --model-mode pick  Bind nothing; ask for a model at every launch (interactive,
+                     so the profile cannot be used by agents). Cannot be combined
+                     with --model or the tier flags.
   API key from one of (most→least secure):
     --key-stdin      read from stdin
     --key-env <VAR>  read from an environment variable

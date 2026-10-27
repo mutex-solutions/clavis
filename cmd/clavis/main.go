@@ -130,6 +130,7 @@ Examples:
   clavis deepseek                       # launch with deepseek profile
   clavis deepseek "fix the bug"         # forward prompt
   clavis deepseek -- --model opus       # forward flags after --
+  clavis kimi --pick                    # choose a model now, save it to the profile
 `)
 }
 
@@ -192,6 +193,12 @@ func launchProfile(p *profile.Profile, extraArgs []string) {
 	// Everything after "--" (or once we hit an unknown flag) goes to claude.
 	quiet := false
 	extraArgs = applyLaunchOverrides(p, extraArgs, &quiet)
+	if p.PicksModelAtLaunch() {
+		if err := bindModelAtLaunch(p, apiKey); err != nil {
+			fmt.Fprintln(os.Stderr, ui.Error(err.Error()))
+			os.Exit(1)
+		}
+	}
 
 	// Strip leading "--" if present
 	if len(extraArgs) > 0 && extraArgs[0] == "--" {
@@ -235,6 +242,60 @@ func applyLaunchOverrides(p *profile.Profile, args []string, quiet *bool) []stri
 		i++
 	}
 	return args[i:]
+}
+
+// bindModelAtLaunch asks which model from the profile's provider to use for this
+// session, and reads the context window that provider reports for it. A "pick"
+// profile stores no model, so nothing is written back: the next launch asks
+// again by design.
+func bindModelAtLaunch(p *profile.Profile, apiKey string) error {
+	requireTTY("bind a model to the profile instead: clavis edit <name>")
+
+	models, err := modelCatalogue(p, apiKey)
+	if err != nil {
+		return fmt.Errorf("cannot list models: %w", err)
+	}
+	if len(models) == 0 {
+		return fmt.Errorf("the provider reported no models — bind one with: clavis edit %s", p.Name)
+	}
+
+	chosen, err := ui.RunModelSelect("Select model for this session", models, 10, "", []string{p.SonnetModel})
+	if err != nil || chosen == "" {
+		return fmt.Errorf("model selection cancelled")
+	}
+
+	applyPickedModel(p, models, chosen)
+	return nil
+}
+
+// modelCatalogue returns the models a profile's provider offers: the declared
+// static catalogue when there is one, otherwise the live listing.
+func modelCatalogue(p *profile.Profile, apiKey string) ([]provider.ModelInfo, error) {
+	if prov, err := provider.Get(p.ProviderID); err == nil {
+		return prov.Catalogue(apiKey)
+	}
+	return provider.FetchModels(p.BaseURL, p.BaseURL, apiKey)
+}
+
+// applyPickedModel moves the profile to chosen. Tiers that followed the old
+// primary follow the new one; a tier deliberately set to something else keeps
+// its model. The context window comes from the provider's own listing when it
+// reports one, and is cleared when it does not: a window belonging to the
+// previous model is worse than no window, because Claude Code would size its
+// compaction to the wrong number.
+func applyPickedModel(p *profile.Profile, models []provider.ModelInfo, chosen string) {
+	old := p.SonnetModel
+	p.SonnetModel = chosen
+	for _, tier := range []*string{&p.OpusModel, &p.HaikuModel, &p.SubagentModel} {
+		if *tier == old || *tier == "" {
+			*tier = chosen
+		}
+	}
+	if w := provider.ContextWindowFor(models, chosen); w > 0 {
+		p.MaxContextTokens = &w
+	} else {
+		p.MaxContextTokens = nil
+	}
 }
 
 // printLaunchBanner shows what clavis is about to do before handing off to
@@ -309,7 +370,12 @@ func runAdd() {
 	}
 
 	// Validate key with a ping (animated so the screen isn't blank while it blocks).
+	// A "pick" profile has no bound model; for it the listing is the key check.
 	pingErr := ui.Spinner("Validating key…", func() error {
+		if result.Profile.PicksModelAtLaunch() {
+			_, err := modelCatalogue(result.Profile, result.APIKey)
+			return err
+		}
 		return provider.Ping(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel)
 	})
 	if pingErr != nil {
@@ -371,7 +437,9 @@ func runList() {
 				}
 			}
 			sonnet := p.SonnetModel
-			if sonnet == "" {
+			if p.PicksModelAtLaunch() {
+				sonnet = "(pick each launch)"
+			} else if sonnet == "" {
 				sonnet = "(unset)"
 			}
 			fmt.Printf("  %s %-20s  %-24s  %s\n", marker, p.Name, sonnet, ui.DimStyle.Render(updated))

@@ -101,6 +101,7 @@ func AddProfile() (*AddResult, error) {
 		baseURL                                           string
 		apiKey                                            string
 		models                                            []provider.ModelInfo
+		modelMode                                         string
 		alias                                             string
 		opusModel, sonnetModel, haikuModel, subagentModel string
 		effort                                            string
@@ -113,6 +114,7 @@ func AddProfile() (*AddResult, error) {
 	const (
 		stepProvider = iota
 		stepKey
+		stepModelMode
 		stepModels
 		stepAlias
 		stepModelSelect
@@ -150,7 +152,24 @@ func AddProfile() (*AddResult, error) {
 				return nil, err
 			}
 			baseURL, apiKey = url, key
-			step = stepModels
+			step = stepModelMode
+
+		case stepModelMode:
+			pick, err := wizardModelMode()
+			if err != nil {
+				if isBack(err) {
+					step = stepKey
+					continue
+				}
+				return nil, err
+			}
+			if pick {
+				modelMode = "pick"
+				step = stepAlias
+			} else {
+				modelMode = ""
+				step = stepModels
+			}
 
 		case stepModels:
 			prov, _ := provider.Get(providerID)
@@ -177,16 +196,24 @@ func AddProfile() (*AddResult, error) {
 		case stepAlias:
 			a, err := wizardAlias(providerID)
 			if err != nil {
-				// Skip the non-interactive fetch step when going back — jump
-				// straight to the key input (the previous *visible* step).
 				if isBack(err) {
-					step = stepKey
+					if modelMode == "pick" {
+						step = stepModelMode
+					} else {
+						// Skip the non-interactive fetch step when going back —
+						// jump straight to the key input.
+						step = stepKey
+					}
 					continue
 				}
 				return nil, err
 			}
 			alias = a
-			step = stepModelSelect
+			if modelMode == "pick" {
+				step = stepConfirm
+			} else {
+				step = stepModelSelect
+			}
 
 		case stepModelSelect:
 			o, s, h, sub, err := wizardModelSelect(models, nil)
@@ -220,6 +247,7 @@ func AddProfile() (*AddResult, error) {
 				Name: alias, ProviderID: providerID, BaseURL: baseURL,
 				OpusModel: opusModel, SonnetModel: sonnetModel,
 				HaikuModel: haikuModel, SubagentModel: subagentModel,
+				ModelMode:                  modelMode,
 				MaxContextTokens:           maxContext,
 				AutoCompactPct:             compactPct,
 				DisableNonessentialTraffic: &is3P,
@@ -237,7 +265,11 @@ func AddProfile() (*AddResult, error) {
 			ok, err := wizardConfirm(p)
 			if err != nil {
 				if isBack(err) {
-					step = stepAdvanced
+					if modelMode == "pick" {
+						step = stepAlias
+					} else {
+						step = stepAdvanced
+					}
 					continue
 				}
 				return nil, err
@@ -266,15 +298,19 @@ func wizardConfirm(p *profile.Profile) (bool, error) {
 	row("Name", p.Name)
 	row("Provider", p.ProviderID)
 	row("Base URL", p.BaseURL)
-	row("Model (main)", p.SonnetModel)
-	if p.OpusModel != "" && p.OpusModel != p.SonnetModel {
-		row("Reasoning", p.OpusModel)
-	}
-	if p.HaikuModel != "" && p.HaikuModel != p.SonnetModel {
-		row("Fast", p.HaikuModel)
-	}
-	if p.SubagentModel != "" && p.SubagentModel != p.SonnetModel {
-		row("Subagent", p.SubagentModel)
+	if p.PicksModelAtLaunch() {
+		row("Model", "pick at every launch (not bound)")
+	} else {
+		row("Model (main)", p.SonnetModel)
+		if p.OpusModel != "" && p.OpusModel != p.SonnetModel {
+			row("Reasoning", p.OpusModel)
+		}
+		if p.HaikuModel != "" && p.HaikuModel != p.SonnetModel {
+			row("Fast", p.HaikuModel)
+		}
+		if p.SubagentModel != "" && p.SubagentModel != p.SonnetModel {
+			row("Subagent", p.SubagentModel)
+		}
 	}
 	if p.MaxContextTokens != nil {
 		row("Context window", FormatTokens(*p.MaxContextTokens))
@@ -304,6 +340,27 @@ func wizardConfirm(p *profile.Profile) (bool, error) {
 		return false, errBack
 	}
 	return save, nil
+}
+
+// wizardModelMode asks whether the profile should bind its models now, or ask
+// for a model every time it launches. Esc here returns errBack.
+func wizardModelMode() (pick bool, err error) {
+	const (
+		optBind = "bind"
+		optPick = "pick"
+	)
+	choice := optBind
+	if err := runForm(huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().Title("Set the model now, or at every launch?").
+			Description(DimStyle.Render("esc = go back")).
+			Options(
+				huh.NewOption("Bind models to Claude Code tiers (fixed profile)", optBind),
+				huh.NewOption("Pick a model at every launch (nothing bound)", optPick),
+			).Value(&choice),
+	))); err != nil {
+		return false, errBack
+	}
+	return choice == optPick, nil
 }
 
 // wizardProvider asks the user to pick a provider from the catalog.
