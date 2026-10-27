@@ -9,7 +9,7 @@ func TestCatalogLoads(t *testing.T) {
 	}
 }
 
-func TestKimiCodeUsesStaticCatalogue(t *testing.T) {
+func TestKimiCodeListsModels(t *testing.T) {
 	p, err := Get("kimi-code")
 	if err != nil {
 		t.Fatalf("Get(kimi-code) error: %v", err)
@@ -17,15 +17,32 @@ func TestKimiCodeUsesStaticCatalogue(t *testing.T) {
 	if p.BaseURL != "https://api.kimi.ai/coding/" {
 		t.Errorf("BaseURL = %q", p.BaseURL)
 	}
-	models, err := p.Catalogue("not-used-for-static")
+	// The coding endpoint does expose a listing (measured 2026-10-27, and it
+	// reports a 1M window rather than the 256K the docs suggested), so the
+	// catalog must ask it instead of hardcoding a stale number.
+	if p.ModelsEndpoint() != "https://api.kimi.ai/coding/v1/models" {
+		t.Errorf("ModelsEndpoint = %q", p.ModelsEndpoint())
+	}
+	if len(p.Models) != 0 {
+		t.Errorf("kimi-code should use the live listing, got %d static models", len(p.Models))
+	}
+}
+
+func TestStaticCatalogueSkipsTheNetwork(t *testing.T) {
+	window := 131072
+	p := Provider{
+		BaseURL: "http://127.0.0.1:1/never-reached",
+		Models:  []ModelInfo{{ID: "fixed-model", MaxInputTokens: &window}},
+	}
+	models, err := p.Catalogue("unused")
 	if err != nil {
 		t.Fatalf("Catalogue() error: %v", err)
 	}
-	if len(models) != 1 || models[0].ID != "kimi-for-coding" {
-		t.Fatalf("Catalogue() = %+v, want one kimi-for-coding entry", models)
+	if len(models) != 1 || models[0].ID != "fixed-model" {
+		t.Fatalf("Catalogue() = %+v, want one fixed-model entry", models)
 	}
-	if w := models[0].ContextWindow(); w != 262144 {
-		t.Errorf("ContextWindow = %d, want 262144", w)
+	if got := models[0].ContextWindow(); got != window {
+		t.Errorf("ContextWindow = %d, want %d", got, window)
 	}
 }
 

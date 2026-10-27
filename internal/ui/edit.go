@@ -228,8 +228,8 @@ func fetchModelsForEdit(p *profile.Profile, apiKey string) []provider.ModelInfo 
 	}
 	prov, provErr := provider.Get(p.ProviderID)
 	if provErr == nil && len(prov.Models) > 0 {
-		// Subscription endpoints have no listing route; the declared catalogue
-		// is the only honest answer and needs no request.
+		// The endpoint has no listing; the declared catalogue is the only
+		// honest answer and needs no request.
 		return prov.Models
 	}
 	endpoint := p.BaseURL // provider.ModelsEndpoint falls back to this

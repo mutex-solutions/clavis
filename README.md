@@ -46,7 +46,7 @@ memory, settings) intact while routing to whichever provider you choose.
 - **Shares your `~/.claude` by default**: keep your MCP servers, agents, and
   memory; opt into an isolated config per-profile or per-launch
 - **Live model discovery**: fetches the provider's real model list during setup,
-  with a static catalogue for subscription endpoints that serve one fixed model
+  with a static catalogue for endpoints that have no listing
 - **Offers to install Claude Code**: if `claude` is not on PATH, launch prompts
   for the official per-user installer (no sudo) for your platform
 - **Key validation**: every profile is pinged before it's saved
@@ -195,11 +195,16 @@ verbatim to `claude`.
 **Kimi sells two different things and their keys are not interchangeable.**
 The *Moonshot API* is pay-per-token and uses a key from the Kimi Open Platform;
 the *Kimi Code* subscription is flat-rate (quota refreshes weekly) and uses a
-key from the [Kimi Code Console](https://www.kimi.com/code/console). A
+key from the [Kimi Code Console](https://www.kimi.ai/code/console). A
 subscription key against `api.moonshot.ai` returns "No models available", and a
 platform key against the coding endpoint is rejected the same way. Pick the
 provider that matches where the key came from. China-based subscribers use
 `api.kimi.com/coding/` instead of `api.kimi.ai`.
+
+The coding endpoint lists its own models at `/coding/v1/models`. As of
+2026-10-27 that reported `kimi-for-coding` with a **1M** context window,
+reasoning, and image/video input, so the wizard picks the window up live instead
+of trusting a figure from the docs.
 
 Any Anthropic-compatible endpoint works via the **Custom** provider: just
 give it the base URL and key.
