@@ -44,6 +44,16 @@ func main() {
 		return
 	}
 
+	// A flag that is not one of clavis's own belongs to claude. Open the profile
+	// picker and forward everything, so `clavis --dangerously-skip-permissions`
+	// behaves like `clavis start --dangerously-skip-permissions`.
+	if strings.HasPrefix(args[0], "-") &&
+		args[0] != "--help" && args[0] != "-h" &&
+		args[0] != "--version" && args[0] != "-v" {
+		runSelector(args)
+		return
+	}
+
 	switch args[0] {
 	case "--help", "-h", "help":
 		printUsage()
@@ -130,7 +140,7 @@ Examples:
   clavis deepseek                       # launch with deepseek profile
   clavis deepseek "fix the bug"         # forward prompt
   clavis deepseek -- --model opus       # forward flags after --
-  clavis kimi --pick                    # choose a model now, save it to the profile
+  clavis --dangerously-skip-permissions # pick a profile, forward the flag to claude
 `)
 }
 
@@ -271,7 +281,8 @@ func bindModelAtLaunch(p *profile.Profile, apiKey string) error {
 // modelCatalogue returns the models a profile's provider offers: the declared
 // static catalogue when there is one, otherwise the live listing.
 func modelCatalogue(p *profile.Profile, apiKey string) ([]provider.ModelInfo, error) {
-	if prov, err := provider.Get(p.ProviderID); err == nil {
+	// A custom provider has no base URL of its own; the profile carries it.
+	if prov, err := provider.Get(p.ProviderID); err == nil && prov.BaseURL != "" {
 		return prov.Catalogue(apiKey)
 	}
 	return provider.FetchModels(p.BaseURL, p.BaseURL, apiKey)

@@ -193,8 +193,21 @@ func (m modelSelect) View() string {
 func buildSelectItems(models []provider.ModelInfo, extraLabel string, pinned []string) []selectItem {
 	pinnedSet := make(map[string]bool, len(pinned))
 	owner := make(map[string]string, len(models))
+	window := make(map[string]string, len(models))
 	for _, m := range models {
 		owner[m.ID] = m.OwnedBy
+		if w := m.ContextWindow(); w > 0 {
+			// The window is the other thing a model choice decides, and this
+			// list is the only place it can be seen before launch, so show it
+			// beside the owner rather than making the user pick blind.
+			window[m.ID] = FormatTokens(w)
+		}
+	}
+	describe := func(id string) string {
+		if window[id] != "" {
+			return owner[id] + " · " + window[id]
+		}
+		return owner[id]
 	}
 
 	items := make([]selectItem, 0, len(models)+1)
@@ -209,13 +222,13 @@ func buildSelectItems(models []provider.ModelInfo, extraLabel string, pinned []s
 			continue // pinned model not in this catalog — skip
 		}
 		pinnedSet[id] = true
-		items = append(items, selectItem{label: id, owner: owner[id], value: id, pinned: true})
+		items = append(items, selectItem{label: id, owner: describe(id), value: id, pinned: true})
 	}
 	for _, m := range models {
 		if pinnedSet[m.ID] {
 			continue
 		}
-		items = append(items, selectItem{label: m.ID, owner: m.OwnedBy, value: m.ID})
+		items = append(items, selectItem{label: m.ID, owner: describe(m.ID), value: m.ID})
 	}
 	return items
 }
