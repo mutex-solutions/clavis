@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 
+	"github.com/mutex-solutions/clavis/internal/claude"
 	"github.com/mutex-solutions/clavis/internal/profile"
 	"github.com/mutex-solutions/clavis/internal/provider"
 	"github.com/mutex-solutions/clavis/internal/ui"
@@ -77,8 +77,8 @@ func runTest(args []string) {
 	add("api key present", true, "")
 
 	// 3. claude binary is installed.
-	if path, err := exec.LookPath("claude"); err != nil {
-		add("claude installed", false, "not on PATH — npm install -g @anthropic-ai/claude-code")
+	if path, err := claude.FindClaude(); err != nil {
+		add("claude installed", false, "not found — install with: "+claude.InstallHint())
 	} else {
 		add("claude installed", true, path)
 	}

@@ -52,11 +52,28 @@
   },
   {
     "id": "moonshot",
-    "displayName": "Moonshot Kimi",
+    "displayName": "Moonshot API (platform key)",
     "baseUrl": "https://api.moonshot.ai/anthropic",
     "auth": {
       "needsKey": true,
-      "keyUrl": "https://platform.moonshot.ai/console/api-keys",
+      "keyUrl": "https://platform.kimi.ai/console/api-keys",
+      "envVar": "ANTHROPIC_AUTH_TOKEN"
+    },
+    "modelsUrl": "https://api.moonshot.ai/v1/models"
+  },
+  {
+    "id": "kimi-code",
+    "displayName": "Kimi Code (subscription)",
+    "baseUrl": "https://api.kimi.ai/coding/",
+    "models": [
+      {
+        "id": "kimi-for-coding",
+        "max_input_tokens": 262144
+      }
+    ],
+    "auth": {
+      "needsKey": true,
+      "keyUrl": "https://www.kimi.com/code/console",
       "envVar": "ANTHROPIC_AUTH_TOKEN"
     }
   },

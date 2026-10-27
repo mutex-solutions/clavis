@@ -154,7 +154,16 @@ func AddProfile() (*AddResult, error) {
 
 		case stepModels:
 			prov, _ := provider.Get(providerID)
-			m, err := wizardModels(baseURL, prov.ModelsEndpoint(), apiKey)
+			var m []provider.ModelInfo
+			var err error
+			if len(prov.Models) > 0 {
+				// Endpoints like the Kimi Code subscription serve one fixed
+				// model and have no listing route; use the declared catalogue
+				// rather than asking for a list that cannot exist.
+				m, err = prov.Catalogue(apiKey)
+			} else {
+				m, err = wizardModels(baseURL, prov.ModelsEndpoint(), apiKey)
+			}
 			if err != nil {
 				if isBack(err) {
 					step = stepKey

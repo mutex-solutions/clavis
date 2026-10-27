@@ -176,7 +176,16 @@ func runAddOrHeadless(args []string) {
 	// a model list was unavailable. This is what makes the wizards' "the window
 	// the provider reports" path work headlessly too.
 	if *contextWindow == 0 {
-		if models, err := provider.FetchModels(url, "", apiKey); err == nil {
+		var models []provider.ModelInfo
+		var err error
+		if len(prov.Models) > 0 {
+			// Static catalogue, e.g. a subscription endpoint with one fixed
+			// model and no /models route.
+			models, err = prov.Catalogue(apiKey)
+		} else {
+			models, err = provider.FetchModels(url, "", apiKey)
+		}
+		if err == nil {
 			if w := provider.ContextWindowFor(models, *model); w > 0 {
 				*contextWindow = w
 			}

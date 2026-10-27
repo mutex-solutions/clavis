@@ -11,11 +11,16 @@ var catalogFS embed.FS
 
 // Provider is a known Anthropic-compatible API endpoint.
 type Provider struct {
-	ID          string     `json:"id"`
-	DisplayName string     `json:"displayName"`
-	BaseURL     string     `json:"baseUrl"`
-	ModelsURL   string     `json:"modelsUrl,omitempty"` // optional, falls back to baseUrl
-	Auth        AuthConfig `json:"auth"`
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
+	BaseURL     string `json:"baseUrl"`
+	ModelsURL   string `json:"modelsUrl,omitempty"` // optional, falls back to baseUrl
+	// Models is a static catalogue for endpoints that have no model listing,
+	// such as a subscription gateway that serves one fixed model id. When it is
+	// set the setup wizard uses it instead of fetching, and no /models request
+	// is made at all.
+	Models []ModelInfo `json:"models,omitempty"`
+	Auth   AuthConfig  `json:"auth"`
 }
 
 // AuthConfig describes how to authenticate with a provider.
@@ -122,4 +127,17 @@ func (p *Provider) ModelsEndpoint() string {
 		return p.ModelsURL
 	}
 	return p.BaseURL
+}
+
+// Catalogue returns the provider's models: the declared static list when there
+// is one, otherwise a live fetch from ModelsEndpoint. A static catalogue is how
+// subscription-only endpoints advertise their single model id without requiring
+// a /models route that they do not have.
+func (p *Provider) Catalogue(apiKey string) ([]ModelInfo, error) {
+	if len(p.Models) > 0 {
+		out := make([]ModelInfo, len(p.Models))
+		copy(out, p.Models)
+		return out, nil
+	}
+	return FetchModels(p.BaseURL, p.ModelsEndpoint(), apiKey)
 }
