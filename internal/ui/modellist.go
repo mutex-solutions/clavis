@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -20,12 +21,14 @@ var (
 	msCount    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	msNoMatch  = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
 	msPin      = lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // yellow star
+	msGroup    = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 )
 
 // selectItem is one entry in the model list.
 type selectItem struct {
 	label  string // model ID
-	owner  string // provider name (dim)
+	owner  string // provider/window text (dim)
+	group  string // provider heading this row belongs to
 	value  string // returned on select
 	pinned bool   // recently chosen — floated to the top with a marker
 }
@@ -162,8 +165,17 @@ func (m modelSelect) View() string {
 		if end > matched {
 			end = matched
 		}
+		lastGroup := ""
 		for i := m.offset; i < end; i++ {
 			item := m.filtered[i]
+			if item.group != "" && item.group != lastGroup {
+				if i > m.offset || lastGroup != "" {
+					sb.WriteString("\n")
+				}
+				sb.WriteString(msGroup.Render(item.group))
+				lastGroup = item.group
+				sb.WriteString("\n")
+			}
 			label := item.label
 			if item.owner != "" {
 				label += "  " + msOwner.Render("("+item.owner+")")
@@ -176,7 +188,7 @@ func (m modelSelect) View() string {
 			} else {
 				sb.WriteString("  " + msNormal.Render(label))
 			}
-			if i < end-1 {
+			if i < end-1 && (i+1 >= len(m.filtered) || m.filtered[i+1].group == item.group) {
 				sb.WriteString("\n")
 			}
 		}
@@ -194,8 +206,10 @@ func buildSelectItems(models []provider.ModelInfo, extraLabel string, pinned []s
 	pinnedSet := make(map[string]bool, len(pinned))
 	owner := make(map[string]string, len(models))
 	window := make(map[string]string, len(models))
+	group := make(map[string]string, len(models))
 	for _, m := range models {
 		owner[m.ID] = m.OwnedBy
+		group[m.ID] = providerGroup(m)
 		if w := m.ContextWindow(); w > 0 {
 			// The window is the other thing a model choice decides, and this
 			// list is the only place it can be seen before launch, so show it
@@ -222,15 +236,72 @@ func buildSelectItems(models []provider.ModelInfo, extraLabel string, pinned []s
 			continue // pinned model not in this catalog — skip
 		}
 		pinnedSet[id] = true
-		items = append(items, selectItem{label: id, owner: describe(id), value: id, pinned: true})
+		items = append(items, selectItem{label: id, owner: describe(id), group: group[id], value: id, pinned: true})
 	}
+
+	// Remaining models are grouped by provider so the list reads as sections
+	// rather than an alphabetical soup.
+	rest := make([]provider.ModelInfo, 0, len(models))
 	for _, m := range models {
-		if pinnedSet[m.ID] {
-			continue
+		if !pinnedSet[m.ID] {
+			rest = append(rest, m)
 		}
-		items = append(items, selectItem{label: m.ID, owner: describe(m.ID), value: m.ID})
+	}
+	sort.SliceStable(rest, func(i, j int) bool {
+		gi, gj := strings.ToLower(group[rest[i].ID]), strings.ToLower(group[rest[j].ID])
+		if gi != gj {
+			return gi < gj
+		}
+		return strings.ToLower(rest[i].ID) < strings.ToLower(rest[j].ID)
+	})
+	for _, m := range rest {
+		items = append(items, selectItem{label: m.ID, owner: describe(m.ID), group: group[m.ID], value: m.ID})
 	}
 	return items
+}
+
+// providerGroup is the heading a model is listed under. CLIProxyAPI reports
+// every Anthropic-compatible credential group as owned_by "anthropic" (the
+// provider type, not the upstream), so a generic owner is split by model
+// family instead of lumping Kimi, DeepSeek and GLM together.
+func providerGroup(m provider.ModelInfo) string {
+	owner := strings.ToLower(strings.TrimSpace(m.OwnedBy))
+	switch owner {
+	case "", "anthropic", "openai", "google":
+		return modelFamily(m.ID)
+	}
+	if label, ok := ownerLabels[owner]; ok {
+		return label
+	}
+	return strings.ToUpper(owner[:1]) + owner[1:]
+}
+
+// ownerLabels renders the provider names the gateway returns as headings.
+var ownerLabels = map[string]string{
+	"antigravity":       "Antigravity",
+	"opencode-go":       "OpenCode Go",
+	"deepseek-official": "DeepSeek",
+	"glm-borrowed":      "GLM",
+	"kimi-code":         "Kimi Code",
+}
+
+func modelFamily(id string) string {
+	s := strings.ToLower(id)
+	families := []struct{ prefix, name string }{
+		{"kimi", "Kimi"}, {"k3", "Kimi"},
+		{"deepseek", "DeepSeek"}, {"glm", "GLM"},
+		{"gemini", "Gemini"}, {"qwen", "Qwen"},
+		{"minimax", "MiniMax"}, {"grok", "Grok"}, {"gpt", "OpenAI"},
+	}
+	for _, f := range families {
+		if strings.HasPrefix(s, f.prefix) {
+			return f.name
+		}
+	}
+	if i := strings.IndexAny(s, "-."); i > 0 {
+		return s[:i]
+	}
+	return "Other"
 }
 
 // RunModelSelect shows an interactive model selector on a cleared screen.

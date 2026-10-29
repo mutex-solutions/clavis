@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -219,5 +220,55 @@ func TestBuildSelectItems_ShowsContextWindow(t *testing.T) {
 	}
 	if items[1].owner != "acme" {
 		t.Errorf("owner = %q, want no window suffix when none is reported", items[1].owner)
+	}
+}
+
+func TestProviderGroupSplitsGenericOwners(t *testing.T) {
+	cases := []struct {
+		model provider.ModelInfo
+		want  string
+	}{
+		{provider.ModelInfo{ID: "k3.1-pro", OwnedBy: "anthropic"}, "Kimi"},
+		{provider.ModelInfo{ID: "kimi-for-coding", OwnedBy: "anthropic"}, "Kimi"},
+		{provider.ModelInfo{ID: "deepseek-flash", OwnedBy: "anthropic"}, "DeepSeek"},
+		{provider.ModelInfo{ID: "glm-5.3", OwnedBy: "anthropic"}, "GLM"},
+		{provider.ModelInfo{ID: "kimi-k3-opencode", OwnedBy: "opencode-go"}, "OpenCode Go"},
+		{provider.ModelInfo{ID: "gemini-3.8-flash-high", OwnedBy: "antigravity"}, "Antigravity"},
+	}
+	for _, c := range cases {
+		if got := providerGroup(c.model); got != c.want {
+			t.Errorf("providerGroup(%s, owner=%s) = %q, want %q", c.model.ID, c.model.OwnedBy, got, c.want)
+		}
+	}
+}
+
+func TestBuildSelectItemsGroupsByProvider(t *testing.T) {
+	items := buildSelectItems([]provider.ModelInfo{
+		{ID: "glm-5.3", OwnedBy: "anthropic"},
+		{ID: "deepseek-flash", OwnedBy: "anthropic"},
+		{ID: "k3.1-pro", OwnedBy: "anthropic"},
+		{ID: "gemini-3.8-flash-high", OwnedBy: "antigravity"},
+	}, "", nil)
+
+	wantGroups := []string{"Antigravity", "DeepSeek", "GLM", "Kimi"}
+	for i, want := range wantGroups {
+		if items[i].group != want {
+			t.Errorf("item %d group = %q, want %q", i, items[i].group, want)
+		}
+	}
+}
+
+func TestModelSelectViewShowsGroupHeadings(t *testing.T) {
+	items := buildSelectItems([]provider.ModelInfo{
+		{ID: "glm-5.3", OwnedBy: "anthropic"},
+		{ID: "deepseek-flash", OwnedBy: "anthropic"},
+		{ID: "k3.1-pro", OwnedBy: "anthropic"},
+		{ID: "gemini-3.8-flash-high", OwnedBy: "antigravity"},
+	}, "", nil)
+	view := newModelSelect("Models", "hint", items, 10).View()
+	for _, heading := range []string{"Antigravity", "DeepSeek", "GLM", "Kimi"} {
+		if !strings.Contains(view, heading) {
+			t.Errorf("view is missing the %q heading:\n%s", heading, view)
+		}
 	}
 }
