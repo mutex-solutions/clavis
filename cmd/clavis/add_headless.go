@@ -49,9 +49,10 @@ func runAddOrHeadless(args []string) {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	providerID := fs.String("provider", "", "Provider ID (deepseek, anthropic, zai, ...) — required")
-	model := fs.String("model", "", "Primary model, the daily driver — required unless --model-mode pick")
+	model := fs.String("model", "", "Primary model, the Opus tier and the session model — required unless --model-mode pick")
 	modelMode := fs.String("model-mode", "", "Set to 'pick' to choose a model at every launch instead of binding one")
-	reasoningModel := fs.String("reasoning-model", "", "Hard-reasoning model (falls back to --model)")
+	sonnetModel := fs.String("sonnet-model", "", "Sonnet tier (falls back to --model)")
+	reasoningModel := fs.String("reasoning-model", "", "Deprecated alias for --model")
 	fastModel := fs.String("fast-model", "", "Fast/cheap model (falls back to --model)")
 	subagentModel := fs.String("subagent-model", "", "Subagent model (falls back to --model)")
 	fableModel := fs.String("fable-model", "", "Fable model (falls back to --model)")
@@ -113,9 +114,14 @@ func runAddOrHeadless(args []string) {
 	if err != nil {
 		fail(exitProvider, "provider", err.Error())
 	}
+	// --reasoning-model used to be the Opus tier; Opus is the primary now, so
+	// it survives as an alias rather than silently setting a different field.
+	if *reasoningModel != "" && *model == "" {
+		*model = *reasoningModel
+	}
 	if *modelMode == "pick" {
-		if *model != "" || *reasoningModel != "" || *fastModel != "" || *subagentModel != "" || *fableModel != "" {
-			fail(exitUsage, "model-mode", "--model-mode pick cannot be combined with --model/--reasoning-model/--fast-model/--subagent-model/--fable-model")
+		if *model != "" || *sonnetModel != "" || *fastModel != "" || *subagentModel != "" || *fableModel != "" {
+			fail(exitUsage, "model-mode", "--model-mode pick cannot be combined with --model/--sonnet-model/--fast-model/--subagent-model/--fable-model")
 		}
 	} else if *modelMode != "" {
 		fail(exitUsage, "model-mode", `--model-mode only accepts "pick"`)
@@ -257,8 +263,8 @@ func runAddOrHeadless(args []string) {
 		ProviderID:                 *providerID,
 		BaseURL:                    url,
 		CreatedAt:                  createdAt, // preserved on --overwrite, empty otherwise
-		SonnetModel:                *model,
-		OpusModel:                  *reasoningModel,
+		OpusModel:                  *model,
+		SonnetModel:                *sonnetModel,
 		HaikuModel:                 *fastModel,
 		SubagentModel:              *subagentModel,
 		FableModel:                 *fableModel,
@@ -326,7 +332,7 @@ Headless (for agents/CI — pass any flag to trigger this mode):
 
 Required:
   --provider <id>    Provider ID. See: clavis providers [--json]
-  --model <id>       Primary model (the daily driver)
+  --model <id>       Primary model (the Opus tier; the session model)
   --model-mode pick  Bind nothing; ask for a model at every launch (interactive,
                      so the profile cannot be used by agents). Cannot be combined
                      with --model or the tier flags.
@@ -338,7 +344,7 @@ Required:
     --key <k>        literal (visible in ps/history — avoid on shared hosts)
 
 Model tiers (all optional, each falls back to --model):
-  --reasoning-model <id>   Hard-reasoning tier
+  --sonnet-model <id>      Sonnet tier
   --fast-model <id>        Fast/cheap tier
   --subagent-model <id>    Subagent tier
   --fable-model <id>       Fable tier

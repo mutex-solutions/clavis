@@ -117,9 +117,9 @@ func EnvVars(p *profile.Profile, apiKey string) map[string]string {
 	}
 	// A setup-token profile may bind no model at all, in which case Claude's
 	// own default applies and none of the tier vars are set.
-	if p.SonnetModel != "" {
-		set["ANTHROPIC_MODEL"] = p.SonnetModel
-		set["ANTHROPIC_DEFAULT_SONNET_MODEL"] = p.SonnetModel
+	if p.PrimaryModel() != "" {
+		set["ANTHROPIC_MODEL"] = p.PrimaryModel()
+		set["ANTHROPIC_DEFAULT_SONNET_MODEL"] = p.ResolvedSonnet()
 		set["ANTHROPIC_DEFAULT_OPUS_MODEL"] = p.ResolvedOpus()
 		set["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = p.ResolvedHaiku()
 		set["ANTHROPIC_DEFAULT_FABLE_MODEL"] = p.ResolvedFable()
@@ -286,7 +286,7 @@ func PlanFor(p *profile.Profile, extraArgs []string) Plan {
 	return Plan{
 		Provider:   p.ProviderID,
 		BaseURL:    p.BaseURL,
-		Model:      p.SonnetModel,
+		Model:      p.PrimaryModel(),
 		ConfigDir:  dir,
 		Isolated:   isolated,
 		ClaudeArgs: buildArgs(p, extraArgs, ""),

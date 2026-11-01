@@ -52,6 +52,10 @@ func TestTierFallback(t *testing.T) {
 	if got := p.ResolvedFable(); got != "model-sonnet" {
 		t.Errorf("ResolvedFable() = %q, want %q", got, "model-sonnet")
 	}
+	// Opus is primary when set; a sonnet-only profile is the compatibility path.
+	if got := p.PrimaryModel(); got != "model-sonnet" {
+		t.Errorf("PrimaryModel() = %q, want %q", got, "model-sonnet")
+	}
 
 	// With explicit values
 	p.OpusModel = "model-opus"
@@ -70,6 +74,21 @@ func TestTierFallback(t *testing.T) {
 	}
 	if got := p.ResolvedFable(); got != "model-fable" {
 		t.Errorf("ResolvedFable() = %q, want %q", got, "model-fable")
+	}
+	if got := p.PrimaryModel(); got != "model-opus" {
+		t.Errorf("PrimaryModel() = %q, want opus", got)
+	}
+	if got := p.ResolvedSonnet(); got != "model-sonnet" {
+		t.Errorf("ResolvedSonnet() = %q, want sonnet", got)
+	}
+
+	// A profile that binds only Opus uses it for every unset tier.
+	q := &Profile{OpusModel: "model-opus"}
+	if got := q.ResolvedSonnet(); got != "model-opus" {
+		t.Errorf("ResolvedSonnet() = %q, want the primary", got)
+	}
+	if got := q.ResolvedHaiku(); got != "model-opus" {
+		t.Errorf("ResolvedHaiku() = %q, want the primary", got)
 	}
 }
 

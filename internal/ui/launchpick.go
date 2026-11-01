@@ -24,8 +24,8 @@ type LaunchSelection struct {
 // Esc backs out to the caller, which cancels the launch.
 func PickLaunchModels(models []provider.ModelInfo) (*LaunchSelection, error) {
 	clearScreen()
-	sonnet, err := RunModelSelect("Select the main model", models, 12, "", nil)
-	if err != nil || sonnet == "" {
+	main, err := RunModelSelect("Select the main model", models, 12, "", nil)
+	if err != nil || main == "" {
 		return nil, errBack
 	}
 
@@ -45,23 +45,25 @@ func PickLaunchModels(models []provider.ModelInfo) (*LaunchSelection, error) {
 		return nil, errBack
 	}
 
-	sel := &LaunchSelection{Sonnet: sonnet, Opus: sonnet, Haiku: sonnet, Subagent: sonnet, Fable: sonnet}
+	// The main model is the Opus tier; Opus is the session model now that Fable
+	// sits above it. Sonnet is a lower tier, not the primary.
+	sel := &LaunchSelection{Opus: main, Sonnet: main, Haiku: main, Subagent: main, Fable: main}
 	if choice == optTier {
-		if sel.Opus, err = tierModel("Opus tier (hard reasoning)", models, sonnet); err != nil {
+		if sel.Fable, err = tierModel("Fable tier (top tier)", models, main); err != nil {
 			return nil, err
 		}
-		if sel.Haiku, err = tierModel("Haiku tier (fast/cheap)", models, sonnet); err != nil {
+		if sel.Sonnet, err = tierModel("Sonnet tier (fast default)", models, main); err != nil {
 			return nil, err
 		}
-		if sel.Subagent, err = tierModel("Subagent tier", models, sonnet); err != nil {
+		if sel.Haiku, err = tierModel("Haiku tier (cheapest)", models, main); err != nil {
 			return nil, err
 		}
-		if sel.Fable, err = tierModel("Fable tier (hardest tasks)", models, sonnet); err != nil {
+		if sel.Subagent, err = tierModel("Subagent tier", models, main); err != nil {
 			return nil, err
 		}
 	}
 
-	detected := provider.ContextWindowFor(models, sonnet)
+	detected := provider.ContextWindowFor(models, main)
 	var input string
 	placeholder := ""
 	hint := "enter = use the window the provider reports"

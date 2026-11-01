@@ -115,7 +115,7 @@ func runTest(args []string) {
 				known[m.ID] = true
 			}
 			seen := map[string]bool{}
-			for _, m := range []string{p.SonnetModel, p.ResolvedOpus(), p.ResolvedHaiku(), p.ResolvedSubagent(), p.ResolvedFable()} {
+			for _, m := range []string{p.PrimaryModel(), p.ResolvedFable(), p.ResolvedSonnet(), p.ResolvedHaiku(), p.ResolvedSubagent()} {
 				if m == "" || seen[m] {
 					continue
 				}
@@ -129,7 +129,7 @@ func runTest(args []string) {
 		}
 	} else {
 		seen := map[string]bool{}
-		for _, m := range []string{p.SonnetModel, p.ResolvedOpus(), p.ResolvedHaiku(), p.ResolvedSubagent(), p.ResolvedFable()} {
+		for _, m := range []string{p.PrimaryModel(), p.ResolvedFable(), p.ResolvedSonnet(), p.ResolvedHaiku(), p.ResolvedSubagent()} {
 			if m == "" || seen[m] {
 				continue
 			}

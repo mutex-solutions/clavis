@@ -166,10 +166,12 @@ type Profile struct {
     UpdatedAt  string `json:"updated_at"`  // ISO 8601
 
     // ── Model Tiers (Claude Code 6-tier system) ──
-    // Sonnet is required (daily driver). Others are optional — if empty,
-    // they fall back to sonnet_model at launch.
-    SonnetModel   string `json:"sonnet_model"`            // → ANTHROPIC_DEFAULT_SONNET_MODEL (REQUIRED)
-    OpusModel     string `json:"opus_model,omitempty"`     // → ANTHROPIC_DEFAULT_OPUS_MODEL
+    // Opus is the primary (session) model. Fable is the top tier above it, and
+    // Sonnet/Haiku/Subagent fall back to Opus. A profile bound before this
+    // order changed has only sonnet_model; it keeps working as the fallback
+    // primary.
+    OpusModel     string `json:"opus_model,omitempty"`     // → ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_OPUS_MODEL (primary)
+    SonnetModel   string `json:"sonnet_model,omitempty"`   // → ANTHROPIC_DEFAULT_SONNET_MODEL (falls back to opus)
     HaikuModel    string `json:"haiku_model,omitempty"`    // → ANTHROPIC_DEFAULT_HAIKU_MODEL
     SubagentModel string `json:"subagent_model,omitempty"` // → CLAUDE_CODE_SUBAGENT_MODEL
     FableModel    string `json:"fable_model,omitempty"`    // → ANTHROPIC_DEFAULT_FABLE_MODEL
@@ -208,15 +210,16 @@ type Profile struct {
 
 #### Tier fallback rules
 
-At launch, any unset tier falls back to `sonnet_model`:
+At launch, any unset tier falls back to the primary model, which is Opus:
 
 ```
-ANTHROPIC_MODEL                 = sonnet_model        (always)
-ANTHROPIC_DEFAULT_SONNET_MODEL  = sonnet_model        (always, required)
-ANTHROPIC_DEFAULT_OPUS_MODEL    = opus_model || sonnet_model
-ANTHROPIC_DEFAULT_HAIKU_MODEL   = haiku_model || sonnet_model
-ANTHROPIC_DEFAULT_FABLE_MODEL   = fable_model || sonnet_model
-CLAUDE_CODE_SUBAGENT_MODEL      = subagent_model || sonnet_model
+primary                          = opus_model || sonnet_model   (sonnet for pre-existing profiles)
+ANTHROPIC_MODEL                  = primary
+ANTHROPIC_DEFAULT_OPUS_MODEL     = opus_model || primary
+ANTHROPIC_DEFAULT_SONNET_MODEL   = sonnet_model || primary
+ANTHROPIC_DEFAULT_HAIKU_MODEL    = haiku_model || primary
+ANTHROPIC_DEFAULT_FABLE_MODEL    = fable_model || primary
+CLAUDE_CODE_SUBAGENT_MODEL       = subagent_model || primary
 ```
 
 The API key is stored **separately** in `~/.clavis/profiles/<name>/.env`,
@@ -425,8 +428,8 @@ When a profile is selected, clavis:
 CLAUDE_CONFIG_DIR=$HOME/.clavis/profiles/<name>
 ANTHROPIC_BASE_URL=<base_url>
 ANTHROPIC_AUTH_TOKEN=$CLAVIS_KEY
-ANTHROPIC_MODEL=<sonnet_model>
-ANTHROPIC_DEFAULT_SONNET_MODEL=<sonnet_model>
+ANTHROPIC_MODEL=<opus_model || sonnet_model>
+ANTHROPIC_DEFAULT_SONNET_MODEL=<sonnet_model || opus_model>
 ANTHROPIC_DEFAULT_OPUS_MODEL=<opus_model || sonnet_model>
 ANTHROPIC_DEFAULT_HAIKU_MODEL=<haiku_model || sonnet_model>
 ANTHROPIC_DEFAULT_FABLE_MODEL=<fable_model || sonnet_model>
@@ -637,12 +640,12 @@ usage in tokamak CLI.
 | `ANTHROPIC_BASE_URL` | `base_url` | — | Provider endpoint |
 | `ANTHROPIC_AUTH_TOKEN` | (from .env) | — | Bearer auth for 3P providers |
 | `CLAUDE_CODE_OAUTH_TOKEN` | (from .env) | — | Setup-token auth (`auth_mode: oauth`). Replaces base URL + auth token; used directly against Anthropic |
-| `ANTHROPIC_MODEL` | `sonnet_model` | — | Primary session model |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `opus_model` | falls back to sonnet | Hard reasoning tier |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `sonnet_model` | — | Daily driver (required) |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `haiku_model` | falls back to sonnet | Fast/cheap background |
-| `ANTHROPIC_DEFAULT_FABLE_MODEL` | `fable_model` | falls back to sonnet | Hardest, longest-running tasks |
-| `CLAUDE_CODE_SUBAGENT_MODEL` | `subagent_model` | falls back to sonnet | Background agents |
+| `ANTHROPIC_MODEL` | `opus_model`, else `sonnet_model` | — | Primary session model |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `opus_model` | falls back to primary | Primary / hard reasoning tier |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `sonnet_model` | falls back to primary | Fast default tier |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `haiku_model` | falls back to primary | Cheapest tier |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL` | `fable_model` | falls back to primary | Top tier: hardest, longest-running tasks |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | `subagent_model` | falls back to primary | Background agents |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | `max_context_tokens` | unset (200K) | The model's real window — what 100% is. Without it Claude Code assumes 200K for non-`claude-*` IDs and warns that it does |
 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | `auto_compact_pct` | unset | Only LOWERS threshold. 80 = compact at 80% of the window |
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `auto_compact_window` | unset | Absolute token count for compaction. Claude Code **clamps it to the window it believes the model has**, so on its own it cannot raise the effective window |

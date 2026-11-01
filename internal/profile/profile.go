@@ -95,36 +95,54 @@ func (p *Profile) ConfigDir() (dir string, isolated bool) {
 	return "", false
 }
 
-// ResolvedOpus returns opus model or falls back to sonnet.
-func (p *Profile) ResolvedOpus() string {
+// PrimaryModel is the session model, ANTHROPIC_MODEL. Opus is the default tier
+// now that Fable sits above it; Sonnet is the compatibility fallback for
+// profiles bound when Sonnet was the primary.
+func (p *Profile) PrimaryModel() string {
 	if p.OpusModel != "" {
 		return p.OpusModel
 	}
 	return p.SonnetModel
 }
 
-// ResolvedHaiku returns haiku model or falls back to sonnet.
+// ResolvedOpus returns the opus model, falling back to the primary.
+func (p *Profile) ResolvedOpus() string {
+	if p.OpusModel != "" {
+		return p.OpusModel
+	}
+	return p.PrimaryModel()
+}
+
+// ResolvedSonnet returns the sonnet model, falling back to the primary.
+func (p *Profile) ResolvedSonnet() string {
+	if p.SonnetModel != "" {
+		return p.SonnetModel
+	}
+	return p.PrimaryModel()
+}
+
+// ResolvedHaiku returns haiku model or falls back to the primary.
 func (p *Profile) ResolvedHaiku() string {
 	if p.HaikuModel != "" {
 		return p.HaikuModel
 	}
-	return p.SonnetModel
+	return p.PrimaryModel()
 }
 
-// ResolvedSubagent returns subagent model or falls back to sonnet.
+// ResolvedSubagent returns subagent model or falls back to the primary.
 func (p *Profile) ResolvedSubagent() string {
 	if p.SubagentModel != "" {
 		return p.SubagentModel
 	}
-	return p.SonnetModel
+	return p.PrimaryModel()
 }
 
-// ResolvedFable returns the fable model or falls back to sonnet.
+// ResolvedFable returns the fable model or falls back to the primary.
 func (p *Profile) ResolvedFable() string {
 	if p.FableModel != "" {
 		return p.FableModel
 	}
-	return p.SonnetModel
+	return p.PrimaryModel()
 }
 
 // ShouldDisableNonessentialTraffic returns the effective value.
@@ -176,8 +194,8 @@ func (p *Profile) Validate() error {
 	case "":
 		// A setup-token profile may bind nothing: Claude's own model is a
 		// valid answer, and pinning one is the exception.
-		if p.SonnetModel == "" && p.AuthMode != AuthOAuth {
-			return fmt.Errorf("sonnet_model is required")
+		if p.PrimaryModel() == "" && p.AuthMode != AuthOAuth {
+			return fmt.Errorf("a model is required (opus_model, or sonnet_model for older profiles)")
 		}
 	case "pick":
 		if p.SonnetModel != "" || p.OpusModel != "" || p.HaikuModel != "" ||
