@@ -86,7 +86,7 @@ func EditProfile(p *profile.Profile, apiKey string) (*EditResult, error) {
 
 		case editContext:
 			detected := detectedContextOptions(modelsFor(),
-				edited.SonnetModel, edited.OpusModel, edited.HaikuModel, edited.SubagentModel)
+				edited.SonnetModel, edited.OpusModel, edited.HaikuModel, edited.SubagentModel, edited.FableModel)
 			ctx, err := wizardContextWindow(detected, edited.MaxContextTokens)
 			if err != nil {
 				continue // esc = back to the menu, keeping everything so far
@@ -94,7 +94,7 @@ func EditProfile(p *profile.Profile, apiKey string) (*EditResult, error) {
 			edited.MaxContextTokens = ctx
 
 		case editModels:
-			o, s, h, sub, err := wizardModelSelect(modelsFor(), &edited)
+			o, s, h, sub, fa, err := wizardModelSelect(modelsFor(), &edited)
 			if err != nil {
 				continue
 			}
@@ -114,8 +114,12 @@ func EditProfile(p *profile.Profile, apiKey string) (*EditResult, error) {
 			if sub == "" {
 				sub = edited.SubagentModel
 			}
+			if fa == "" {
+				fa = edited.FableModel
+			}
 			edited.OpusModel, edited.SonnetModel = o, s
 			edited.HaikuModel, edited.SubagentModel = h, sub
+			edited.FableModel = fa
 			// Binding models ends "pick at every launch"; the two states are
 			// mutually exclusive (Profile.Validate enforces it).
 			edited.ModelMode = ""
@@ -195,6 +199,7 @@ func printEditSummary(p *profile.Profile) {
 		tier("Reasoning", p.OpusModel, p.SonnetModel)
 		tier("Fast", p.HaikuModel, p.SonnetModel)
 		tier("Subagent", p.SubagentModel, p.SonnetModel)
+		tier("Fable", p.FableModel, p.SonnetModel)
 	}
 
 	if p.MaxContextTokens != nil {

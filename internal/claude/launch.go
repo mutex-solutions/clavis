@@ -28,8 +28,13 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 	// (set in buildEnv), not a settings.json file — so we never write into the
 	// user's real ~/.claude when running in shared-config mode.
 
-	// Build args
-	args := buildArgs(p, extraArgs)
+	// Build args. The picker settings are generated here rather than in
+	// PlanFor because they need the provider's live catalogue and the API key.
+	settingsPath := ""
+	if !hasSettingsFlag(extraArgs) {
+		settingsPath = WriteModelPickerSettings(p, apiKey)
+	}
+	args := buildArgs(p, extraArgs, settingsPath)
 
 	// Find claude binary. If it is missing, offer the platform installer rather
 	// than failing with a command the user then has to look up.
@@ -100,14 +105,25 @@ func Launch(p *profile.Profile, apiKey string, extraArgs []string) (int, error) 
 // run claude themselves (e.g. an agent runner) can apply these directly.
 // The API key is included as ANTHROPIC_AUTH_TOKEN.
 func EnvVars(p *profile.Profile, apiKey string) map[string]string {
-	set := map[string]string{
-		"ANTHROPIC_BASE_URL":             p.BaseURL,
-		"ANTHROPIC_AUTH_TOKEN":           apiKey,
-		"ANTHROPIC_MODEL":                p.SonnetModel,
-		"ANTHROPIC_DEFAULT_SONNET_MODEL": p.SonnetModel,
-		"ANTHROPIC_DEFAULT_OPUS_MODEL":   p.ResolvedOpus(),
-		"ANTHROPIC_DEFAULT_HAIKU_MODEL":  p.ResolvedHaiku(),
-		"CLAUDE_CODE_SUBAGENT_MODEL":     p.ResolvedSubagent(),
+	set := map[string]string{}
+	if p.AuthMode == profile.AuthOAuth {
+		// A setup token authenticates a subscription against Anthropic itself.
+		// It must not be pointed at a gateway, and it takes precedence over the
+		// keychain, so the base URL is deliberately left unset.
+		set["CLAUDE_CODE_OAUTH_TOKEN"] = apiKey
+	} else {
+		set["ANTHROPIC_BASE_URL"] = p.BaseURL
+		set["ANTHROPIC_AUTH_TOKEN"] = apiKey
+	}
+	// A setup-token profile may bind no model at all, in which case Claude's
+	// own default applies and none of the tier vars are set.
+	if p.SonnetModel != "" {
+		set["ANTHROPIC_MODEL"] = p.SonnetModel
+		set["ANTHROPIC_DEFAULT_SONNET_MODEL"] = p.SonnetModel
+		set["ANTHROPIC_DEFAULT_OPUS_MODEL"] = p.ResolvedOpus()
+		set["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = p.ResolvedHaiku()
+		set["ANTHROPIC_DEFAULT_FABLE_MODEL"] = p.ResolvedFable()
+		set["CLAUDE_CODE_SUBAGENT_MODEL"] = p.ResolvedSubagent()
 	}
 
 	// Config dir: isolated profiles get their own; shared profiles inherit the
@@ -174,30 +190,43 @@ func EnvVars(p *profile.Profile, apiKey string) map[string]string {
 	return set
 }
 
+// managedEnv is every variable clavis can set. It doubles as the strip list so
+// that switching a profile's auth mode cannot leave the previous mode's
+// credential in the environment.
+var managedEnv = []string{
+	"ANTHROPIC_API_KEY",
+	"ANTHROPIC_AUTH_TOKEN",
+	"ANTHROPIC_BASE_URL",
+	"ANTHROPIC_MODEL",
+	"ANTHROPIC_DEFAULT_SONNET_MODEL",
+	"ANTHROPIC_DEFAULT_OPUS_MODEL",
+	"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+	"ANTHROPIC_DEFAULT_FABLE_MODEL",
+	"ANTHROPIC_CUSTOM_HEADERS",
+	"CLAUDE_CODE_SUBAGENT_MODEL",
+	"CLAUDE_CODE_OAUTH_TOKEN",
+	"CLAUDE_CREDENTIALS_JSON_B64",
+	"CLAUDE_CODE_ATTRIBUTION_HEADER",
+	"CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+	"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE",
+	"CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+	"CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+	"CLAUDE_CODE_EFFORT_LEVEL",
+	"CLAUDE_CODE_DISABLE_THINKING",
+	"API_TIMEOUT_MS",
+	"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+	"CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS",
+}
+
 func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
 	set := EnvVars(p, apiKey)
 
-	// Vars to always strip (auth leaks), plus everything we're about to set
-	// (prevents duplicates — on Linux getenv returns the FIRST match).
-	strip := map[string]bool{
-		"ANTHROPIC_API_KEY":           true,
-		"CLAUDE_CODE_OAUTH_TOKEN":     true,
-		"CLAUDE_CREDENTIALS_JSON_B64": true,
-		// Always strip attribution: we own this decision per-profile, so an
-		// inherited shell value must not leak through in shared-config mode.
-		"CLAUDE_CODE_ATTRIBUTION_HEADER": true,
-	}
-	for k := range set {
-		strip[k] = true
-	}
-
-	var env []string
-	for _, e := range os.Environ() {
-		key := strings.SplitN(e, "=", 2)[0]
-		if !strip[key] {
-			env = append(env, e)
-		}
-	}
+	// cleanEnv drops every var clavis may ever set, not just the ones this
+	// profile sets. A leftover ANTHROPIC_AUTH_TOKEN from the shell would
+	// otherwise ride along into an OAuth session and take precedence over the
+	// setup token, and an inherited ANTHROPIC_BASE_URL would send it somewhere
+	// it must not go.
+	env := cleanEnv()
 
 	for k, v := range set {
 		env = append(env, k+"="+v)
@@ -206,11 +235,32 @@ func buildEnv(p *profile.Profile, apiKey string) ([]string, error) {
 	return env, nil
 }
 
+// cleanEnv is os.Environ without any variable clavis manages. It is what the
+// launch path starts from, and what `claude setup-token` runs under so the
+// shell's gateway variables cannot confuse the flow.
+func cleanEnv() []string {
+	strip := map[string]bool{}
+	for _, k := range managedEnv {
+		strip[k] = true
+	}
+	var env []string
+	for _, e := range os.Environ() {
+		key := strings.SplitN(e, "=", 2)[0]
+		if !strip[key] {
+			env = append(env, e)
+		}
+	}
+	return env
+}
+
 // buildArgs constructs claude CLI arguments.
-func buildArgs(p *profile.Profile, extraArgs []string) []string {
+func buildArgs(p *profile.Profile, extraArgs []string, settingsPath string) []string {
 	var args []string
 	if p.MinimalMode {
 		args = append(args, "--bare")
+	}
+	if settingsPath != "" {
+		args = append(args, "--settings", settingsPath)
 	}
 	args = append(args, extraArgs...)
 	return args
@@ -239,6 +289,6 @@ func PlanFor(p *profile.Profile, extraArgs []string) Plan {
 		Model:      p.SonnetModel,
 		ConfigDir:  dir,
 		Isolated:   isolated,
-		ClaudeArgs: buildArgs(p, extraArgs),
+		ClaudeArgs: buildArgs(p, extraArgs, ""),
 	}
 }

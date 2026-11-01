@@ -44,6 +44,16 @@ func runValidate(args []string) {
 		return
 	}
 
+	if p.AuthMode == profile.AuthOAuth {
+		fmt.Printf("  Checking setup token (%s)... ", p.BaseURL)
+		if err := provider.CheckOAuth(p.BaseURL, apiKey); err != nil {
+			fmt.Println(ui.Error(err.Error()))
+			os.Exit(exitValidation)
+		}
+		fmt.Println(ui.Success("OK"))
+		return
+	}
+
 	fmt.Printf("  Pinging %s (%s)... ", p.ProviderID, p.BaseURL)
 	if err := provider.Ping(p.BaseURL, apiKey, p.SonnetModel); err != nil {
 		fmt.Println(ui.Error(err.Error()))

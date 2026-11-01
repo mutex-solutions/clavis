@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/mutex-solutions/clavis/internal/claude"
 	"github.com/mutex-solutions/clavis/internal/profile"
 	"github.com/mutex-solutions/clavis/internal/provider"
 )
@@ -104,6 +105,7 @@ func AddProfile() (*AddResult, error) {
 		modelMode                                         string
 		alias                                             string
 		opusModel, sonnetModel, haikuModel, subagentModel string
+		fableModel                                        string
 		effort                                            string
 		noThinking                                        bool
 		compactPct                                        *int
@@ -181,7 +183,7 @@ func AddProfile() (*AddResult, error) {
 				// for a list that cannot exist.
 				m, err = prov.Catalogue(apiKey)
 			} else {
-				m, err = wizardModels(baseURL, prov.ModelsEndpoint(), apiKey)
+				m, err = wizardModels(baseURL, prov.ModelsEndpoint(), apiKey, prov.OAuth)
 			}
 			if err != nil {
 				if isBack(err) {
@@ -216,7 +218,7 @@ func AddProfile() (*AddResult, error) {
 			}
 
 		case stepModelSelect:
-			o, s, h, sub, err := wizardModelSelect(models, nil)
+			o, s, h, sub, fa, err := wizardModelSelect(models, nil)
 			if err != nil {
 				if isBack(err) {
 					step = stepAlias
@@ -224,12 +226,12 @@ func AddProfile() (*AddResult, error) {
 				}
 				return nil, err
 			}
-			opusModel, sonnetModel, haikuModel, subagentModel = o, s, h, sub
+			opusModel, sonnetModel, haikuModel, subagentModel, fableModel = o, s, h, sub, fa
 			step = stepAdvanced
 
 		case stepAdvanced:
 			e, nt, cp, iso, ctx, err := wizardAdvanced(
-				detectedContextOptions(models, sonnetModel, opusModel, haikuModel, subagentModel))
+				detectedContextOptions(models, sonnetModel, opusModel, haikuModel, subagentModel, fableModel))
 			if err != nil {
 				if isBack(err) {
 					step = stepModelSelect
@@ -242,12 +244,19 @@ func AddProfile() (*AddResult, error) {
 
 		case stepConfirm:
 			// Build the profile so we can show a full summary before saving.
-			is3P := providerID != "anthropic"
+			prov, _ := provider.Get(providerID)
+			is3P := providerID != "anthropic" && !prov.OAuth
+			authMode := ""
+			if prov.OAuth {
+				authMode = profile.AuthOAuth
+			}
 			p := &profile.Profile{
 				Name: alias, ProviderID: providerID, BaseURL: baseURL,
 				OpusModel: opusModel, SonnetModel: sonnetModel,
 				HaikuModel: haikuModel, SubagentModel: subagentModel,
+				FableModel:                 fableModel,
 				ModelMode:                  modelMode,
+				AuthMode:                   authMode,
 				MaxContextTokens:           maxContext,
 				AutoCompactPct:             compactPct,
 				DisableNonessentialTraffic: &is3P,
@@ -310,6 +319,9 @@ func wizardConfirm(p *profile.Profile) (bool, error) {
 		}
 		if p.SubagentModel != "" && p.SubagentModel != p.SonnetModel {
 			row("Subagent", p.SubagentModel)
+		}
+		if p.FableModel != "" && p.FableModel != p.SonnetModel {
+			row("Fable", p.FableModel)
 		}
 	}
 	if p.MaxContextTokens != nil {
@@ -411,13 +423,52 @@ func wizardKey(providerID, baseURL string) (outURL, apiKey string, err error) {
 	if prov.Auth.KeyURL != "" {
 		fmt.Println(DimStyle.Render("  Get an API key at: " + prov.Auth.KeyURL))
 	}
+	if prov.OAuth {
+		const (
+			optRun   = "run"
+			optPaste = "paste"
+		)
+		choice := optRun
+		if err := runForm(huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().Title("Claude authentication").
+				Description(DimStyle.Render("esc = go back to provider")).
+				Options(
+					huh.NewOption("Run claude setup-token now (recommended)", optRun),
+					huh.NewOption("Paste an existing setup token", optPaste),
+				).Value(&choice),
+		))); err != nil {
+			return "", "", errBack
+		}
+		if choice == optRun {
+			if path, err := claude.FindClaude(); err != nil {
+				fmt.Println(Warn(err.Error()))
+			} else {
+				fmt.Println(DimStyle.Render("  Approve the login in your browser; the token is captured when it prints."))
+				if tok, err := claude.RunSetupToken(path); err == nil && tok != "" {
+					return outURL, tok, nil
+				} else if err != nil {
+					fmt.Println(Warn(fmt.Sprintf("Could not capture the token automatically: %v", err)))
+					fmt.Println(DimStyle.Render("  Paste it below instead."))
+				}
+			}
+		}
+	}
+	keyTitle := "API key"
+	keyPlaceholder := "sk-..."
+	keyMissing := "API key is required"
+	if prov.OAuth {
+		keyTitle = "Setup token"
+		keyPlaceholder = "sk-ant-oat..."
+		keyMissing = "setup token is required"
+		fmt.Println(DimStyle.Render("  Generate one with: claude setup-token"))
+	}
 
 	fields = append(fields,
-		huh.NewInput().Title("API key").EchoMode(huh.EchoModePassword).Placeholder("sk-...").
+		huh.NewInput().Title(keyTitle).EchoMode(huh.EchoModePassword).Placeholder(keyPlaceholder).
 			Description(DimStyle.Render("esc = go back to provider")).
 			Validate(func(s string) error {
 				if s == "" {
-					return fmt.Errorf("API key is required")
+					return errors.New(keyMissing)
 				}
 				return nil
 			}).Value(&apiKey))
@@ -428,9 +479,12 @@ func wizardKey(providerID, baseURL string) (outURL, apiKey string, err error) {
 	return outURL, apiKey, nil
 }
 
-func wizardModels(baseURL, modelsURL, apiKey string) ([]provider.ModelInfo, error) {
+func wizardModels(baseURL, modelsURL, apiKey string, oauth bool) ([]provider.ModelInfo, error) {
 	tryFetch := func(mURL string) ([]provider.ModelInfo, error) {
 		res, err := runWithSpinner("Fetching models…", func() (any, error) {
+			if oauth {
+				return provider.FetchModelsOAuth(baseURL, mURL, apiKey)
+			}
 			return provider.FetchModels(baseURL, mURL, apiKey)
 		})
 		var models []provider.ModelInfo
@@ -526,13 +580,13 @@ func wizardAlias(providerID string) (string, error) {
 	return alias, nil
 }
 
-// wizardModelSelect picks the four model tiers. `current` is the profile being
+// wizardModelSelect picks the five model tiers. `current` is the profile being
 // edited, or nil when creating one: it decides whether an empty answer means
 // "fall back to sonnet" (new) or "leave this tier alone" (editing).
-func wizardModelSelect(models []provider.ModelInfo, current *profile.Profile) (opus, sonnet, haiku, subagent string, err error) {
+func wizardModelSelect(models []provider.ModelInfo, current *profile.Profile) (opus, sonnet, haiku, subagent, fable string, err error) {
 	if len(models) == 0 {
-		o, s, h, sub, e := selectTiersFreeText()
-		return o, s, h, sub, e
+		o, s, h, sub, fa, e := selectTiersFreeText()
+		return o, s, h, sub, fa, e
 	}
 
 	var simple bool
@@ -541,15 +595,15 @@ func wizardModelSelect(models []provider.ModelInfo, current *profile.Profile) (o
 			Description("One model for all tiers. esc = go back.").
 			Affirmative("Yes, one model").Negative("No, per-tier").Value(&simple),
 	))); err != nil {
-		return "", "", "", "", errBack
+		return "", "", "", "", "", errBack
 	}
 
 	if simple {
 		m, err := selectOneModel(models)
 		if err != nil {
-			return "", "", "", "", err
+			return "", "", "", "", "", err
 		}
-		return m, m, m, m, nil
+		return m, m, m, m, m, nil
 	}
 	return selectTiersDetailed(models, current)
 }
@@ -608,16 +662,16 @@ func selectOneModel(models []provider.ModelInfo) (string, error) {
 	return RunModelSelect("Select model", models, 5, "", nil)
 }
 
-// selectTiersDetailed walks the four tiers. When editing (`current` non-nil)
+// selectTiersDetailed walks the five tiers. When editing (`current` non-nil)
 // the profile's existing models are floated to the top (★) and the optional
 // tiers offer "keep" rather than "default", so pressing Enter through the flow
 // never silently discards a tier the user already chose.
-func selectTiersDetailed(models []provider.ModelInfo, current *profile.Profile) (opus, sonnet, haiku, subagent string, err error) {
-	var curOpus, curSonnet, curHaiku, curSub string
+func selectTiersDetailed(models []provider.ModelInfo, current *profile.Profile) (opus, sonnet, haiku, subagent, fable string, err error) {
+	var curOpus, curSonnet, curHaiku, curSub, curFable string
 	optionalLabel := "(default — use sonnet)"
 	if current != nil {
 		curOpus, curSonnet = current.OpusModel, current.SonnetModel
-		curHaiku, curSub = current.HaikuModel, current.SubagentModel
+		curHaiku, curSub, curFable = current.HaikuModel, current.SubagentModel, current.FableModel
 		optionalLabel = "(keep — leave this tier unchanged)"
 	}
 
@@ -644,6 +698,11 @@ func selectTiersDetailed(models []provider.ModelInfo, current *profile.Profile) 
 		return
 	}
 
+	fable, err = RunModelSelect("Fable model", models, 5, optionalLabel, []string{curFable, subagent, sonnet, opus})
+	if err != nil {
+		return
+	}
+
 	// An empty answer means "use the fallback" when adding, but "leave it
 	// alone" when editing — otherwise Enter would wipe the existing tier.
 	if current != nil {
@@ -653,19 +712,22 @@ func selectTiersDetailed(models []provider.ModelInfo, current *profile.Profile) 
 		if subagent == "" {
 			subagent = curSub
 		}
+		if fable == "" {
+			fable = curFable
+		}
 	}
 
-	return opus, sonnet, haiku, subagent, nil
+	return opus, sonnet, haiku, subagent, fable, nil
 }
 
-func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
+func selectTiersFreeText() (opus, sonnet, haiku, subagent, fable string, err error) {
 	var simple bool
 	if runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Simple model setup?").
 			Description("One model for all tiers.").
 			Affirmative("Yes, one model").Negative("No, per-tier").Value(&simple),
 	))) != nil {
-		return "", "", "", "", errBack
+		return "", "", "", "", "", errBack
 	}
 
 	if simple {
@@ -678,9 +740,9 @@ func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
 					return nil
 				}).Value(&opus),
 		))) != nil {
-			return "", "", "", "", errBack
+			return "", "", "", "", "", errBack
 		}
-		return opus, opus, opus, opus, nil
+		return opus, opus, opus, opus, opus, nil
 	}
 
 	if runForm(huh.NewForm(huh.NewGroup(
@@ -694,8 +756,9 @@ func selectTiersFreeText() (opus, sonnet, haiku, subagent string, err error) {
 		huh.NewInput().Title("Sonnet model ID — optional").Placeholder("same as opus").Value(&sonnet),
 		huh.NewInput().Title("Haiku model ID — optional").Placeholder("same as opus").Value(&haiku),
 		huh.NewInput().Title("Subagent model ID — optional").Placeholder("same as opus").Value(&subagent),
+		huh.NewInput().Title("Fable model ID — optional").Placeholder("same as opus").Value(&fable),
 	))) != nil {
-		return "", "", "", "", errBack
+		return "", "", "", "", "", errBack
 	}
-	return opus, sonnet, haiku, subagent, nil
+	return opus, sonnet, haiku, subagent, fable, nil
 }

@@ -140,10 +140,10 @@ func wizardContextCustom() (*int, error) {
 // reported for the models a profile will actually use — the main model first,
 // then any tier reporting a different window, so the main one wins as the
 // default. Empty when the provider reports nothing (the common case).
-func detectedContextOptions(models []provider.ModelInfo, sonnet, opus, haiku, subagent string) []int {
+func detectedContextOptions(models []provider.ModelInfo, sonnet, opus, haiku, subagent, fable string) []int {
 	seen := make(map[int]bool)
 	var out []int
-	for _, id := range []string{sonnet, opus, haiku, subagent} {
+	for _, id := range []string{sonnet, opus, haiku, subagent, fable} {
 		n := provider.ContextWindowFor(models, id)
 		if n <= 0 || seen[n] {
 			continue

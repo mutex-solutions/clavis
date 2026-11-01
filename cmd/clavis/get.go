@@ -60,6 +60,7 @@ func runGet(args []string) {
 			"opus":     p.ResolvedOpus(),
 			"haiku":    p.ResolvedHaiku(),
 			"subagent": p.ResolvedSubagent(),
+			"fable":    p.ResolvedFable(),
 		}
 		m["config_shared"] = !p.IsolatedConfig
 		out, _ := json.Marshal(m)
@@ -77,6 +78,9 @@ func runGet(args []string) {
 	fmt.Println("  " + ui.TitleStyle.Render(p.Name))
 	row("provider", p.ProviderID)
 	row("base url", p.BaseURL)
+	if p.AuthMode == profile.AuthOAuth {
+		row("auth", "setup token (Claude subscription, direct)")
+	}
 	if p.PicksModelAtLaunch() {
 		row("model", "pick at every launch (not bound)")
 	} else {
@@ -90,6 +94,9 @@ func runGet(args []string) {
 	}
 	if p.SubagentModel != "" {
 		row("subagent", p.SubagentModel)
+	}
+	if p.FableModel != "" {
+		row("fable", p.FableModel)
 	}
 	if p.EffortLevel != "" {
 		row("effort", p.EffortLevel)

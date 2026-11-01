@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mutex-solutions/clavis/internal/claude"
 	"github.com/mutex-solutions/clavis/internal/profile"
 	"github.com/mutex-solutions/clavis/internal/provider"
 	"github.com/mutex-solutions/clavis/internal/ui"
@@ -34,6 +35,16 @@ type addResult struct {
 	Field string `json:"field,omitempty"`
 }
 
+// authModeFor maps a provider's auth kind onto the profile field. OAuth is a
+// property of the provider entry; the profile stores it so a launch does not
+// have to re-derive it from an id that a user may later rename.
+func authModeFor(p provider.Provider) string {
+	if p.OAuth {
+		return profile.AuthOAuth
+	}
+	return ""
+}
+
 func runAddOrHeadless(args []string) {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -43,12 +54,14 @@ func runAddOrHeadless(args []string) {
 	reasoningModel := fs.String("reasoning-model", "", "Hard-reasoning model (falls back to --model)")
 	fastModel := fs.String("fast-model", "", "Fast/cheap model (falls back to --model)")
 	subagentModel := fs.String("subagent-model", "", "Subagent model (falls back to --model)")
+	fableModel := fs.String("fable-model", "", "Fable model (falls back to --model)")
 	baseURL := fs.String("base-url", "", "Base URL (required only for --provider custom)")
 	alias := fs.String("alias", "", "Profile name (auto-generated if empty)")
 	key := fs.String("key", "", "API key (insecure on shared hosts — prefer --key-file/--key-env)")
 	keyFile := fs.String("key-file", "", "Read the API key from this file")
 	keyEnv := fs.String("key-env", "", "Read the API key from this environment variable")
 	keyStdin := fs.Bool("key-stdin", false, "Read the API key from stdin")
+	setupToken := fs.Bool("setup-token", false, "Run `claude setup-token` now and use the token it prints (Claude subscription)")
 	overwrite := fs.Bool("overwrite", false, "Replace an existing profile of the same name (upsert)")
 	contextWindow := fs.Int("context-window", 0, "The model's real context window in tokens (stops Claude Code assuming 200K)")
 	compactWindow := fs.Int("compact-window", 0, "Token count at which auto-compaction fires (capped at --context-window)")
@@ -96,20 +109,48 @@ func runAddOrHeadless(args []string) {
 	if *providerID == "" {
 		fail(exitUsage, "provider", "--provider is required")
 	}
+	prov, err := provider.Get(*providerID)
+	if err != nil {
+		fail(exitProvider, "provider", err.Error())
+	}
 	if *modelMode == "pick" {
-		if *model != "" || *reasoningModel != "" || *fastModel != "" || *subagentModel != "" {
-			fail(exitUsage, "model-mode", "--model-mode pick cannot be combined with --model/--reasoning-model/--fast-model/--subagent-model")
+		if *model != "" || *reasoningModel != "" || *fastModel != "" || *subagentModel != "" || *fableModel != "" {
+			fail(exitUsage, "model-mode", "--model-mode pick cannot be combined with --model/--reasoning-model/--fast-model/--subagent-model/--fable-model")
 		}
 	} else if *modelMode != "" {
 		fail(exitUsage, "model-mode", `--model-mode only accepts "pick"`)
-	} else if *model == "" {
+	} else if *model == "" && !prov.OAuth {
+		// A setup-token profile may leave the model to Claude itself.
 		fail(exitUsage, "model", "--model is required (or pass --model-mode pick)")
+	}
+
+	if *setupToken && (*key != "" || *keyFile != "" || *keyEnv != "" || *keyStdin) {
+		fail(exitUsage, "key", "--setup-token mints its own token; don't also pass a key")
 	}
 
 	// Resolve the key from exactly one source, in order of increasing safety.
 	// --key-env and --key-stdin keep the secret out of argv (ps/history).
 	apiKey := *key
 	switch {
+	case *setupToken:
+		if !prov.OAuth {
+			fail(exitUsage, "setup-token", "--setup-token requires a provider that uses a Claude setup token (claude)")
+		}
+		if !ui.StdoutIsTTY() {
+			fail(exitUsage, "setup-token", "claude setup-token needs a terminal; run it yourself and pass the token with --key-stdin")
+		}
+		claudePath, err := claude.FindClaude()
+		if err != nil {
+			fail(exitNoClaude, "claude", err.Error())
+		}
+		if !*asJSON {
+			fmt.Fprintln(os.Stderr, ui.DimStyle.Render("  Approve the login in your browser; the token is captured when it prints."))
+		}
+		tok, err := claude.RunSetupToken(claudePath)
+		if err != nil {
+			fail(exitValidation, "setup-token", fmt.Sprintf("%v — run `claude setup-token` and pass the token with --key-stdin", err))
+		}
+		apiKey = tok
 	case *keyStdin:
 		data, err := io.ReadAll(io.LimitReader(os.Stdin, 1<<16))
 		if err != nil {
@@ -130,11 +171,6 @@ func runAddOrHeadless(args []string) {
 	}
 	if apiKey == "" {
 		fail(exitUsage, "key", "an API key is required (--key, --key-file, --key-env, or --key-stdin)")
-	}
-
-	prov, err := provider.Get(*providerID)
-	if err != nil {
-		fail(exitProvider, "provider", err.Error())
 	}
 
 	url := *baseURL
@@ -163,9 +199,10 @@ func runAddOrHeadless(args []string) {
 		}
 	}
 
-	noTraffic := prov.ID != "anthropic"
-	noBetas := prov.ID != "anthropic"
-	noAttr := prov.ID != "anthropic"
+	is3P := prov.ID != "anthropic" && !prov.OAuth
+	noTraffic := is3P
+	noBetas := is3P
+	noAttr := is3P
 
 	if *modelMode == "pick" {
 		if !*asJSON {
@@ -175,7 +212,15 @@ func runAddOrHeadless(args []string) {
 		if !*asJSON {
 			fmt.Print(ui.DimStyle.Render("  Validating... "))
 		}
-		if err := provider.Ping(url, apiKey, *model); err != nil {
+		var err error
+		if prov.OAuth {
+			// An inference call would spend subscription quota and answers 429
+			// when the account is merely busy, so validate with the listing.
+			err = provider.CheckOAuth(url, apiKey)
+		} else {
+			err = provider.Ping(url, apiKey, *model)
+		}
+		if err != nil {
 			fail(exitValidation, "key", fmt.Sprintf("key validation failed: %v", err))
 		}
 		if !*asJSON {
@@ -195,6 +240,8 @@ func runAddOrHeadless(args []string) {
 			// Static catalogue, e.g. a subscription endpoint with one fixed
 			// model and no /models route.
 			models, err = prov.Catalogue(apiKey)
+		} else if prov.OAuth {
+			models, err = provider.FetchModelsOAuth(url, "", apiKey)
 		} else {
 			models, err = provider.FetchModels(url, "", apiKey)
 		}
@@ -214,7 +261,9 @@ func runAddOrHeadless(args []string) {
 		OpusModel:                  *reasoningModel,
 		HaikuModel:                 *fastModel,
 		SubagentModel:              *subagentModel,
+		FableModel:                 *fableModel,
 		ModelMode:                  *modelMode,
+		AuthMode:                   authModeFor(prov),
 		DisableNonessentialTraffic: &noTraffic,
 		DisableExperimentalBetas:   &noBetas,
 		DisableAttribution:         &noAttr,
@@ -282,6 +331,7 @@ Required:
                      so the profile cannot be used by agents). Cannot be combined
                      with --model or the tier flags.
   API key from one of (most→least secure):
+    --setup-token    run "claude setup-token" and capture what it prints (claude)
     --key-stdin      read from stdin
     --key-env <VAR>  read from an environment variable
     --key-file <path> read from a file
@@ -291,6 +341,7 @@ Model tiers (all optional, each falls back to --model):
   --reasoning-model <id>   Hard-reasoning tier
   --fast-model <id>        Fast/cheap tier
   --subagent-model <id>    Subagent tier
+  --fable-model <id>       Fable tier
 
 Common options:
   --alias <name>     Profile name (auto-generated if omitted)
