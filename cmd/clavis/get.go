@@ -56,8 +56,9 @@ func runGet(args []string) {
 		_ = json.Unmarshal(raw, &m)
 		m["key_present"] = keyPresent
 		m["resolved"] = map[string]string{
-			"sonnet":   p.SonnetModel,
+			"primary":  p.PrimaryModel(),
 			"opus":     p.ResolvedOpus(),
+			"sonnet":   p.ResolvedSonnet(),
 			"haiku":    p.ResolvedHaiku(),
 			"subagent": p.ResolvedSubagent(),
 			"fable":    p.ResolvedFable(),
@@ -81,22 +82,25 @@ func runGet(args []string) {
 	if p.AuthMode == profile.AuthOAuth {
 		row("auth", "setup token (Claude subscription, direct)")
 	}
-	if p.PicksModelAtLaunch() {
+	switch {
+	case p.PicksModelAtLaunch():
 		row("model", "pick at every launch (not bound)")
-	} else {
-		row("model", p.SonnetModel)
+	case p.PrimaryModel() == "":
+		row("model", "Claude default (not bound)")
+	default:
+		row("model", p.PrimaryModel())
 	}
-	if p.OpusModel != "" {
-		row("reasoning", p.OpusModel)
+	if p.FableModel != "" {
+		row("fable", p.FableModel)
+	}
+	if p.SonnetModel != "" {
+		row("sonnet", p.SonnetModel)
 	}
 	if p.HaikuModel != "" {
 		row("fast", p.HaikuModel)
 	}
 	if p.SubagentModel != "" {
 		row("subagent", p.SubagentModel)
-	}
-	if p.FableModel != "" {
-		row("fable", p.FableModel)
 	}
 	if p.EffortLevel != "" {
 		row("effort", p.EffortLevel)

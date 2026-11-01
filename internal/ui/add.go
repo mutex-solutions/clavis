@@ -103,6 +103,7 @@ func AddProfile() (*AddResult, error) {
 		apiKey                                            string
 		models                                            []provider.ModelInfo
 		modelMode                                         string
+		skipModels                                        bool
 		alias                                             string
 		opusModel, sonnetModel, haikuModel, subagentModel string
 		fableModel                                        string
@@ -157,7 +158,8 @@ func AddProfile() (*AddResult, error) {
 			step = stepModelMode
 
 		case stepModelMode:
-			pick, err := wizardModelMode()
+			prov, _ := provider.Get(providerID)
+			mode, err := wizardModelMode(prov.OAuth)
 			if err != nil {
 				if isBack(err) {
 					step = stepKey
@@ -165,11 +167,16 @@ func AddProfile() (*AddResult, error) {
 				}
 				return nil, err
 			}
-			if pick {
+			modelMode = ""
+			skipModels = false
+			switch mode {
+			case "pick":
 				modelMode = "pick"
 				step = stepAlias
-			} else {
-				modelMode = ""
+			case "default":
+				skipModels = true
+				step = stepAlias
+			default:
 				step = stepModels
 			}
 
@@ -199,7 +206,7 @@ func AddProfile() (*AddResult, error) {
 			a, err := wizardAlias(providerID)
 			if err != nil {
 				if isBack(err) {
-					if modelMode == "pick" {
+					if modelMode == "pick" || skipModels {
 						step = stepModelMode
 					} else {
 						// Skip the non-interactive fetch step when going back —
@@ -211,7 +218,7 @@ func AddProfile() (*AddResult, error) {
 				return nil, err
 			}
 			alias = a
-			if modelMode == "pick" {
+			if modelMode == "pick" || skipModels {
 				step = stepConfirm
 			} else {
 				step = stepModelSelect
@@ -309,19 +316,21 @@ func wizardConfirm(p *profile.Profile) (bool, error) {
 	row("Base URL", p.BaseURL)
 	if p.PicksModelAtLaunch() {
 		row("Model", "pick at every launch (not bound)")
+	} else if p.SonnetModel == "" {
+		row("Model", "Claude default (not bound)")
 	} else {
-		row("Model (main)", p.SonnetModel)
-		if p.OpusModel != "" && p.OpusModel != p.SonnetModel {
-			row("Reasoning", p.OpusModel)
+		row("Model (main)", p.PrimaryModel())
+		if p.FableModel != "" && p.FableModel != p.PrimaryModel() {
+			row("Fable", p.FableModel)
 		}
-		if p.HaikuModel != "" && p.HaikuModel != p.SonnetModel {
+		if p.SonnetModel != "" && p.SonnetModel != p.PrimaryModel() {
+			row("Sonnet", p.SonnetModel)
+		}
+		if p.HaikuModel != "" && p.HaikuModel != p.PrimaryModel() {
 			row("Fast", p.HaikuModel)
 		}
-		if p.SubagentModel != "" && p.SubagentModel != p.SonnetModel {
+		if p.SubagentModel != "" && p.SubagentModel != p.PrimaryModel() {
 			row("Subagent", p.SubagentModel)
-		}
-		if p.FableModel != "" && p.FableModel != p.SonnetModel {
-			row("Fable", p.FableModel)
 		}
 	}
 	if p.MaxContextTokens != nil {
@@ -356,23 +365,34 @@ func wizardConfirm(p *profile.Profile) (bool, error) {
 
 // wizardModelMode asks whether the profile should bind its models now, or ask
 // for a model every time it launches. Esc here returns errBack.
-func wizardModelMode() (pick bool, err error) {
+// wizardModelMode returns "bind", "pick", or "default". "default" is offered
+// only for a setup-token profile: Claude's own model is a valid session model,
+// and pinning tiers on top of a subscription is the exception, not the rule.
+func wizardModelMode(allowDefault bool) (string, error) {
 	const (
-		optBind = "bind"
-		optPick = "pick"
+		optBind    = "bind"
+		optPick    = "pick"
+		optDefault = "default"
 	)
 	choice := optBind
+	opts := []huh.Option[string]{
+		huh.NewOption("Bind models to Claude Code tiers (fixed profile)", optBind),
+		huh.NewOption("Pick a model at every launch (nothing bound)", optPick),
+	}
+	if allowDefault {
+		choice = optDefault
+		opts = append([]huh.Option[string]{
+			huh.NewOption("Use Claude's default model (bind nothing)", optDefault),
+		}, opts...)
+	}
 	if err := runForm(huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().Title("Set the model now, or at every launch?").
 			Description(DimStyle.Render("esc = go back")).
-			Options(
-				huh.NewOption("Bind models to Claude Code tiers (fixed profile)", optBind),
-				huh.NewOption("Pick a model at every launch (nothing bound)", optPick),
-			).Value(&choice),
+			Options(opts...).Value(&choice),
 	))); err != nil {
-		return false, errBack
+		return "", errBack
 	}
-	return choice == optPick, nil
+	return choice, nil
 }
 
 // wizardProvider asks the user to pick a provider from the catalog.
@@ -668,11 +688,18 @@ func selectOneModel(models []provider.ModelInfo) (string, error) {
 // never silently discards a tier the user already chose.
 func selectTiersDetailed(models []provider.ModelInfo, current *profile.Profile) (opus, sonnet, haiku, subagent, fable string, err error) {
 	var curOpus, curSonnet, curHaiku, curSub, curFable string
-	optionalLabel := "(default — use sonnet)"
+	optionalLabel := "(default — use the main model)"
 	if current != nil {
 		curOpus, curSonnet = current.OpusModel, current.SonnetModel
 		curHaiku, curSub, curFable = current.HaikuModel, current.SubagentModel, current.FableModel
 		optionalLabel = "(keep — leave this tier unchanged)"
+	}
+
+	// Top tier first: Fable sits above Opus, and a tier list that starts at
+	// Opus invites the reader to assume Opus is the top of the ladder.
+	fable, err = RunModelSelect("Fable model (top tier)", models, 5, optionalLabel, []string{curFable})
+	if err != nil {
+		return
 	}
 
 	opus, err = RunModelSelect("Opus model (hard reasoning)", models, 5, "", []string{curOpus, curSonnet})
@@ -683,22 +710,17 @@ func selectTiersDetailed(models []provider.ModelInfo, current *profile.Profile) 
 	// Each tier floats the already-chosen models to the top (★) with the
 	// most recent first, so the natural default is highlighted and one Enter
 	// away — while any model is still reachable by scrolling or typing.
-	sonnet, err = RunModelSelect("Sonnet model (daily driver)", models, 5, "", []string{curSonnet, opus, curOpus})
+	sonnet, err = RunModelSelect("Sonnet model (fast default)", models, 5, optionalLabel, []string{curSonnet, opus, curOpus})
 	if err != nil {
 		return
 	}
 
-	haiku, err = RunModelSelect("Haiku model (fast/cheap)", models, 5, optionalLabel, []string{curHaiku, sonnet, opus})
+	haiku, err = RunModelSelect("Haiku model (cheapest)", models, 5, optionalLabel, []string{curHaiku, sonnet, opus})
 	if err != nil {
 		return
 	}
 
 	subagent, err = RunModelSelect("Subagent model", models, 5, optionalLabel, []string{curSub, sonnet, opus, haiku})
-	if err != nil {
-		return
-	}
-
-	fable, err = RunModelSelect("Fable model", models, 5, optionalLabel, []string{curFable, subagent, sonnet, opus})
 	if err != nil {
 		return
 	}
@@ -746,6 +768,7 @@ func selectTiersFreeText() (opus, sonnet, haiku, subagent, fable string, err err
 	}
 
 	if runForm(huh.NewForm(huh.NewGroup(
+		huh.NewInput().Title("Fable model ID — optional (top tier)").Placeholder("same as main").Value(&fable),
 		huh.NewInput().Title("Opus model ID — PRIMARY").Placeholder("model-id").
 			Validate(func(s string) error {
 				if s == "" {
@@ -756,7 +779,6 @@ func selectTiersFreeText() (opus, sonnet, haiku, subagent, fable string, err err
 		huh.NewInput().Title("Sonnet model ID — optional").Placeholder("same as opus").Value(&sonnet),
 		huh.NewInput().Title("Haiku model ID — optional").Placeholder("same as opus").Value(&haiku),
 		huh.NewInput().Title("Subagent model ID — optional").Placeholder("same as opus").Value(&subagent),
-		huh.NewInput().Title("Fable model ID — optional").Placeholder("same as opus").Value(&fable),
 	))) != nil {
 		return "", "", "", "", "", errBack
 	}

@@ -32,6 +32,21 @@ func TestEnvVars_SharedByDefault(t *testing.T) {
 	}
 }
 
+func TestEnvVars_OpusIsPrimary(t *testing.T) {
+	// Opus is the session model; every unset tier resolves to it.
+	p := &profile.Profile{
+		Name: "x", ProviderID: "deepseek",
+		BaseURL: "https://api.deepseek.com/anthropic", OpusModel: "opus-m",
+	}
+	v := EnvVars(p, "k")
+	if v["ANTHROPIC_MODEL"] != "opus-m" {
+		t.Errorf("ANTHROPIC_MODEL = %q, want the opus tier", v["ANTHROPIC_MODEL"])
+	}
+	if v["ANTHROPIC_DEFAULT_SONNET_MODEL"] != "opus-m" {
+		t.Errorf("sonnet tier = %q, want the primary", v["ANTHROPIC_DEFAULT_SONNET_MODEL"])
+	}
+}
+
 func TestEnvVars_OAuth(t *testing.T) {
 	// A setup-token profile authenticates against Anthropic itself. It must not
 	// carry an API-key header or a base URL, and with no model bound it must not

@@ -9,10 +9,14 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
+	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/creack/pty"
+	"golang.org/x/term"
 )
 
 // ErrSetupTokenUnreadable reports that `claude setup-token` finished but its
@@ -23,19 +27,27 @@ var ErrSetupTokenUnreadable = errors.New("could not read the token from claude s
 // ansiRE matches the cursor and colour sequences the TUI emits around text.
 var ansiRE = regexp.MustCompile("\x1b\\[[0-9;?]*[a-zA-Z]|\x1b\\][^\x07]*\x07|\x1b[()][A-Z0-9]")
 
-// setupTokenRE matches a Claude setup token. The prefix is what
-// `claude setup-token` prints today; the run is bounded because a longer tail
-// means the scrape swallowed neighbouring text.
+// setupTokenPrefix and setupTokenLen describe the token `claude setup-token`
+// prints (measured: 108 characters, sk-ant-oat01- followed by 95 more). The
+// length is what makes a wrapped token recoverable: the terminal renderer breaks
+// a long line at the window width, so the scrape cannot rely on finding one
+// contiguous run.
+const (
+	setupTokenPrefix = "sk-ant-oat01-"
+	setupTokenLen    = 108
+)
+
+// setupTokenRE matches a token that arrived on one line.
 var setupTokenRE = regexp.MustCompile(`sk-ant-oat01-[A-Za-z0-9_-]{40,160}`)
 
 // RunSetupToken drives `claude setup-token` on the user's terminal and returns
 // the token it prints.
 //
-// The command owns the browser flow and the consent screen; clavis only gives
-// it a pty so the interactive UI works, widens the terminal so a 108-character
-// token cannot wrap, and scrapes the result. The child runs without the shell's
-// credential variables, so it does not warn that authentication is already
-// configured.
+// The command owns the browser flow and the consent screen; clavis only gives it
+// a pty sized to the real terminal, puts the local terminal into raw mode so the
+// TUI receives keystrokes as it does standalone, and scrapes the result. The
+// child runs without the shell's credential variables, so it does not warn that
+// authentication is already configured.
 func RunSetupToken(claudePath string) (string, error) {
 	return runSetupToken(claudePath, os.Stdout)
 }
@@ -44,11 +56,35 @@ func runSetupToken(claudePath string, out io.Writer) (string, error) {
 	cmd := exec.Command(claudePath, "setup-token")
 	cmd.Env = cleanEnv()
 
-	// 400 columns: wide enough that the token prints on one line, which is what
-	// makes the scrape below exact rather than a guess across wrapped chunks.
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 50, Cols: 400})
+	// Start at the user's real size. A wider pty looks fine to the child and
+	// produces a UI the actual terminal wraps into nonsense; the token wrap is
+	// handled in extractSetupToken instead of avoided here.
+	size := &pty.Winsize{Rows: 24, Cols: 80}
+	if cols, rows, serr := term.GetSize(int(os.Stdout.Fd())); serr == nil {
+		size = &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)}
+	}
+	ptmx, err := pty.StartWithSize(cmd, size)
 	if err != nil {
 		return "", fmt.Errorf("start claude setup-token: %w", err)
+	}
+
+	// Follow terminal resizes while the flow is on screen.
+	resize := make(chan os.Signal, 1)
+	signal.Notify(resize, syscall.SIGWINCH)
+	defer signal.Stop(resize)
+	go func() {
+		for range resize {
+			_ = pty.InheritSize(os.Stdin, ptmx)
+		}
+	}()
+
+	// The child's TUI expects raw keystrokes. Without this the local line
+	// discipline buffers input until Enter, and terminal replies (focus events,
+	// cursor queries) are echoed into the form instead of being understood.
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		if state, rerr := term.MakeRaw(int(os.Stdin.Fd())); rerr == nil {
+			defer func() { _ = term.Restore(int(os.Stdin.Fd()), state) }()
+		}
 	}
 
 	var buf bytes.Buffer
@@ -92,7 +128,12 @@ func runSetupToken(claudePath string, out io.Writer) (string, error) {
 	return "", ErrSetupTokenUnreadable
 }
 
-// extractSetupToken returns the longest token-shaped run in the output, or "".
+// extractSetupToken returns the token in the output, or "".
+//
+// The fast path is one contiguous run. At the user's real terminal width the
+// token wraps, and the renderer breaks it with a newline plus padding, so the
+// fallback rebuilds it from the token charset — ignoring whitespace and the
+// escape sequences already stripped — up to the known length.
 func extractSetupToken(out string) string {
 	best := ""
 	for _, t := range setupTokenRE.FindAllString(out, -1) {
@@ -100,5 +141,35 @@ func extractSetupToken(out string) string {
 			best = t
 		}
 	}
+	if len(best) >= setupTokenLen {
+		return best
+	}
+
+	i := strings.Index(out, setupTokenPrefix)
+	if i < 0 {
+		return best
+	}
+	var b strings.Builder
+	for _, r := range out[i:] {
+		if b.Len() >= setupTokenLen {
+			break
+		}
+		if isTokenRune(r) {
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() >= setupTokenLen {
+		return b.String()
+	}
 	return best
+}
+
+func isTokenRune(r rune) bool {
+	switch {
+	case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+		return true
+	case r == '-', r == '_':
+		return true
+	}
+	return false
 }

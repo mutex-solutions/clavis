@@ -41,7 +41,8 @@ memory, settings) intact while routing to whichever provider you choose.
 ## Features
 
 - **6-tier model mapping**: map provider models to Claude Code's
-  opus / sonnet / haiku / subagent / fable tiers plus the primary `ANTHROPIC_MODEL`
+  fable / opus / sonnet / haiku / subagent tiers; Opus is the session model, and
+  every unset tier falls back to it
 - **The provider's models in `/model`**: at launch clavis hands Claude Code a
   settings file listing the provider's catalogue, so `/model` offers every model
   the endpoint serves. Claude Code's own gateway discovery filters to ids
@@ -309,14 +310,15 @@ Claude Code routes different tasks to different model tiers:
 
 | Tier | Env Var | Use |
 |---|---|---|
-| **Sonnet** (required) | `ANTHROPIC_DEFAULT_SONNET_MODEL` | Daily driver, main conversation |
-| Opus | `ANTHROPIC_DEFAULT_OPUS_MODEL` | Hard reasoning, architecture |
-| Haiku | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Fast background tasks |
+| Fable | `ANTHROPIC_DEFAULT_FABLE_MODEL` | Top tier: hardest, longest-running tasks |
+| **Opus** (primary) | `ANTHROPIC_MODEL` + `ANTHROPIC_DEFAULT_OPUS_MODEL` | Session model, hard reasoning |
+| Sonnet | `ANTHROPIC_DEFAULT_SONNET_MODEL` | Fast default tier |
+| Haiku | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Cheapest tier |
 | Subagent | `CLAUDE_CODE_SUBAGENT_MODEL` | Background agents |
-| Fable | `ANTHROPIC_DEFAULT_FABLE_MODEL` | Hardest, longest-running tasks |
 
-Optional tiers fall back to sonnet if not set. The primary `ANTHROPIC_MODEL` is
-set to the sonnet model.
+Optional tiers fall back to the primary model, which is Opus. Profiles created
+before the tier order changed keep working: with no Opus bound, Sonnet becomes
+the primary.
 
 ## Direct Claude (setup token)
 

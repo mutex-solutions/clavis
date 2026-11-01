@@ -194,12 +194,14 @@ func printEditSummary(p *profile.Profile) {
 	row("Base URL", p.BaseURL)
 	if p.PicksModelAtLaunch() {
 		row("Main model", "pick at every launch (not bound)")
+	} else if p.SonnetModel == "" {
+		row("Main model", "Claude default (not bound)")
 	} else {
-		row("Main model", p.SonnetModel)
-		tier("Reasoning", p.OpusModel, p.SonnetModel)
-		tier("Fast", p.HaikuModel, p.SonnetModel)
-		tier("Subagent", p.SubagentModel, p.SonnetModel)
-		tier("Fable", p.FableModel, p.SonnetModel)
+		row("Main model", p.PrimaryModel())
+		tier("Fable", p.FableModel, p.PrimaryModel())
+		tier("Sonnet", p.SonnetModel, p.PrimaryModel())
+		tier("Fast", p.HaikuModel, p.PrimaryModel())
+		tier("Subagent", p.SubagentModel, p.PrimaryModel())
 	}
 
 	if p.MaxContextTokens != nil {

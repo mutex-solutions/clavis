@@ -35,9 +35,14 @@ clavis <name> -- -p "…"            # everything after -- goes to claude
 eval "$(clavis env <name> --reveal-key)"   # bind-mode profiles only
 ```
 
-- `model_mode: pick` profiles bind nothing: every launch asks for a model and
-  optionally a model per tier (Opus, Sonnet, Haiku, Subagent, Fable), plus a
+- `model_mode: pick` profiles bind nothing: every launch asks for the main
+  model and optionally a model per tier (Fable, Sonnet, Haiku, Subagent), plus a
   context-window override. Nothing is saved, so the next launch asks again.
+  Opus is the session model; Fable sits above it, and every unset tier falls
+  back to the primary.
+- A setup-token profile may bind no model at all: the wizard offers "Use
+  Claude's default model", and `clavis add --provider claude` without `--model`
+  does the same.
 - `clavis env` **refuses pick-mode profiles** on purpose — there is no fixed
   model to export. Bind one with `clavis edit`, or launch through clavis.
 - `clavis <name> --settings <file>` keeps the caller's settings: clavis drops its

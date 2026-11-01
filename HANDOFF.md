@@ -38,7 +38,7 @@ embed/providers.json        → built-in provider catalog (go:embed)
 4. **Non-TTY fallback.** In pipes/CI, fall back to plain text output.
 5. **Spawn+wait, not exec.** `os/exec` keeps clavis alive after claude exits to save "last used" state, show errors, and propagate exit codes.
 6. **Unset ANTHROPIC_API_KEY.** Never set to empty or duplicate — fully remove from child env to prevent X-Api-Key header and subscription prompts.
-7. **6-tier model system.** Sonnet (required) + opus/haiku/subagent/fable (optional, fall back to sonnet). Uses `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL` + `CLAUDE_CODE_SUBAGENT_MODEL`. Never use deprecated `ANTHROPIC_SMALL_FAST_MODEL`.
+7. **6-tier model system.** Opus is the primary (session) model; fable/sonnet/haiku/subagent are optional and fall back to it. Fable is the top tier, above Opus. Uses `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL` + `CLAUDE_CODE_SUBAGENT_MODEL`. Never use deprecated `ANTHROPIC_SMALL_FAST_MODEL`.
 8. **CLAUDE_CONFIG_DIR per profile.** Full session isolation. Each provider gets its own history, resume state, config.
 9. **No settings management.** Only writes `CLAUDE_CODE_ATTRIBUTION_HEADER=0` into settings.json if disable_attribution is set. Does not copy/merge/manage global ~/.claude/ settings.
 
