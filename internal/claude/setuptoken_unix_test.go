@@ -10,7 +10,8 @@ import (
 	"testing"
 )
 
-const sampleToken = "sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCdEfGhIjKlMnOpQrStUvWxYz"
+// A token of the real shape: 108 characters.
+var sampleToken = "sk-ant-oat01-" + strings.Repeat("A1b-", 23) + "xyz"
 
 func TestExtractSetupTokenPlain(t *testing.T) {
 	out := "Your OAuth token:\n" + sampleToken + "\n\nStore it somewhere safe."
@@ -32,6 +33,14 @@ func TestExtractSetupTokenLongestWins(t *testing.T) {
 	out := short + "\n" + sampleToken
 	if got := extractSetupToken(out); got != sampleToken {
 		t.Errorf("got %q, want the longer run", got)
+	}
+}
+
+func TestExtractSetupTokenWrapped(t *testing.T) {
+	// At a normal terminal width the renderer breaks the token across lines.
+	wrapped := sampleToken[:70] + "\r\n  " + sampleToken[70:]
+	if got := extractSetupToken(wrapped); got != sampleToken {
+		t.Errorf("got %q, want the reassembled token", got)
 	}
 }
 
