@@ -13,8 +13,8 @@ import (
 // model per tier, plus an optional context-window override. It is applied to a
 // session copy of the profile and never saved.
 type LaunchSelection struct {
-	Opus, Sonnet, Haiku, Subagent string
-	MaxContext                    *int
+	Opus, Sonnet, Haiku, Subagent, Fable string
+	MaxContext                           *int
 }
 
 // PickLaunchModels walks a pick-mode profile through its choices: the main
@@ -45,7 +45,7 @@ func PickLaunchModels(models []provider.ModelInfo) (*LaunchSelection, error) {
 		return nil, errBack
 	}
 
-	sel := &LaunchSelection{Sonnet: sonnet, Opus: sonnet, Haiku: sonnet, Subagent: sonnet}
+	sel := &LaunchSelection{Sonnet: sonnet, Opus: sonnet, Haiku: sonnet, Subagent: sonnet, Fable: sonnet}
 	if choice == optTier {
 		if sel.Opus, err = tierModel("Opus tier (hard reasoning)", models, sonnet); err != nil {
 			return nil, err
@@ -54,6 +54,9 @@ func PickLaunchModels(models []provider.ModelInfo) (*LaunchSelection, error) {
 			return nil, err
 		}
 		if sel.Subagent, err = tierModel("Subagent tier", models, sonnet); err != nil {
+			return nil, err
+		}
+		if sel.Fable, err = tierModel("Fable tier (hardest tasks)", models, sonnet); err != nil {
 			return nil, err
 		}
 	}

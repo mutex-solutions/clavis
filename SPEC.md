@@ -165,13 +165,20 @@ type Profile struct {
     CreatedAt  string `json:"created_at"`  // ISO 8601
     UpdatedAt  string `json:"updated_at"`  // ISO 8601
 
-    // ── Model Tiers (Claude Code 5-tier system) ──
+    // ── Model Tiers (Claude Code 6-tier system) ──
     // Sonnet is required (daily driver). Others are optional — if empty,
     // they fall back to sonnet_model at launch.
     SonnetModel   string `json:"sonnet_model"`            // → ANTHROPIC_DEFAULT_SONNET_MODEL (REQUIRED)
     OpusModel     string `json:"opus_model,omitempty"`     // → ANTHROPIC_DEFAULT_OPUS_MODEL
     HaikuModel    string `json:"haiku_model,omitempty"`    // → ANTHROPIC_DEFAULT_HAIKU_MODEL
     SubagentModel string `json:"subagent_model,omitempty"` // → CLAUDE_CODE_SUBAGENT_MODEL
+    FableModel    string `json:"fable_model,omitempty"`    // → ANTHROPIC_DEFAULT_FABLE_MODEL
+
+    // ── Auth ──
+    // "oauth" = a Claude Code setup token in CLAVIS_KEY, exported as
+    // CLAUDE_CODE_OAUTH_TOKEN and used directly against Anthropic. Empty = an
+    // API key exported as ANTHROPIC_AUTH_TOKEN.
+    AuthMode string `json:"auth_mode,omitempty"`
 
     // ── Token Budget ──
     // Claude Code knows windows only for claude-* IDs; for anything else it
@@ -208,6 +215,7 @@ ANTHROPIC_MODEL                 = sonnet_model        (always)
 ANTHROPIC_DEFAULT_SONNET_MODEL  = sonnet_model        (always, required)
 ANTHROPIC_DEFAULT_OPUS_MODEL    = opus_model || sonnet_model
 ANTHROPIC_DEFAULT_HAIKU_MODEL   = haiku_model || sonnet_model
+ANTHROPIC_DEFAULT_FABLE_MODEL   = fable_model || sonnet_model
 CLAUDE_CODE_SUBAGENT_MODEL      = subagent_model || sonnet_model
 ```
 
@@ -421,6 +429,7 @@ ANTHROPIC_MODEL=<sonnet_model>
 ANTHROPIC_DEFAULT_SONNET_MODEL=<sonnet_model>
 ANTHROPIC_DEFAULT_OPUS_MODEL=<opus_model || sonnet_model>
 ANTHROPIC_DEFAULT_HAIKU_MODEL=<haiku_model || sonnet_model>
+ANTHROPIC_DEFAULT_FABLE_MODEL=<fable_model || sonnet_model>
 CLAUDE_CODE_SUBAGENT_MODEL=<subagent_model || sonnet_model>
 
 # ── Set if profile has values ──
@@ -627,10 +636,12 @@ usage in tokamak CLI.
 | `CLAUDE_CONFIG_DIR` | (derived from name) | — | Per-profile session isolation |
 | `ANTHROPIC_BASE_URL` | `base_url` | — | Provider endpoint |
 | `ANTHROPIC_AUTH_TOKEN` | (from .env) | — | Bearer auth for 3P providers |
+| `CLAUDE_CODE_OAUTH_TOKEN` | (from .env) | — | Setup-token auth (`auth_mode: oauth`). Replaces base URL + auth token; used directly against Anthropic |
 | `ANTHROPIC_MODEL` | `sonnet_model` | — | Primary session model |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | `opus_model` | falls back to sonnet | Hard reasoning tier |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | `sonnet_model` | — | Daily driver (required) |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `haiku_model` | falls back to sonnet | Fast/cheap background |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL` | `fable_model` | falls back to sonnet | Hardest, longest-running tasks |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | `subagent_model` | falls back to sonnet | Background agents |
 | `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | `max_context_tokens` | unset (200K) | The model's real window — what 100% is. Without it Claude Code assumes 200K for non-`claude-*` IDs and warns that it does |
 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | `auto_compact_pct` | unset | Only LOWERS threshold. 80 = compact at 80% of the window |
@@ -663,7 +674,6 @@ usage in tokamak CLI.
 **Exists but not in v1 scope:**
 | Env Var | Notes |
 |---|---|
-| `ANTHROPIC_DEFAULT_FABLE_MODEL` | 6th model tier (Fable). New, edge-case. Add in v0.2+ if needed. |
 | `ANTHROPIC_DEFAULT_{TIER}_MODEL_SUPPORTED_CAPABILITIES` | Declares model capabilities (e.g. `effort,thinking`). Useful for 3P models that don't support thinking. Future enhancement. |
 
 **Does NOT exist (confirmed hallucination-free):**

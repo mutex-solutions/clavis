@@ -76,7 +76,11 @@ func runTest(args []string) {
 		finishTest(report, asJSON)
 		return
 	}
-	add("api key present", true, "")
+	if p.AuthMode == profile.AuthOAuth {
+		add("setup token present", true, "")
+	} else {
+		add("api key present", true, "")
+	}
 
 	// 3. claude binary is installed.
 	if path, err := claude.FindClaude(); err != nil {
@@ -96,9 +100,36 @@ func runTest(args []string) {
 		} else {
 			add("model catalogue", true, fmt.Sprintf("%d models to pick from", len(models)))
 		}
+	} else if p.AuthMode == profile.AuthOAuth {
+		// A setup token cannot be pinged with an inference call without
+		// spending subscription quota, and a busy account answers 429 for a
+		// token that is fine. The listing validates the token and names the
+		// models, so tier checks are membership tests against it.
+		models, err := provider.FetchModelsOAuth(p.BaseURL, p.BaseURL, apiKey)
+		if err != nil {
+			add("setup token", false, err.Error())
+		} else {
+			add("setup token", true, fmt.Sprintf("%d models on this account", len(models)))
+			known := map[string]bool{}
+			for _, m := range models {
+				known[m.ID] = true
+			}
+			seen := map[string]bool{}
+			for _, m := range []string{p.SonnetModel, p.ResolvedOpus(), p.ResolvedHaiku(), p.ResolvedSubagent(), p.ResolvedFable()} {
+				if m == "" || seen[m] {
+					continue
+				}
+				seen[m] = true
+				if !known[m] {
+					add("model "+m, false, "not in the account's model list")
+				} else {
+					add("model "+m, true, "")
+				}
+			}
+		}
 	} else {
 		seen := map[string]bool{}
-		for _, m := range []string{p.SonnetModel, p.ResolvedOpus(), p.ResolvedHaiku(), p.ResolvedSubagent()} {
+		for _, m := range []string{p.SonnetModel, p.ResolvedOpus(), p.ResolvedHaiku(), p.ResolvedSubagent(), p.ResolvedFable()} {
 			if m == "" || seen[m] {
 				continue
 			}

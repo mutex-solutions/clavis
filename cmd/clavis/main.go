@@ -281,6 +281,10 @@ func bindModelAtLaunch(p *profile.Profile, apiKey string) error {
 // modelCatalogue returns the models a profile's provider offers: the declared
 // static catalogue when there is one, otherwise the live listing.
 func modelCatalogue(p *profile.Profile, apiKey string) ([]provider.ModelInfo, error) {
+	// A setup token needs the OAuth headers; an API key must not be sent as one.
+	if p.AuthMode == profile.AuthOAuth {
+		return provider.FetchModelsOAuth(p.BaseURL, p.BaseURL, apiKey)
+	}
 	// A custom provider has no base URL of its own; the profile carries it.
 	if prov, err := provider.Get(p.ProviderID); err == nil && prov.BaseURL != "" {
 		return prov.Catalogue(apiKey)
@@ -298,6 +302,7 @@ func applyLaunchSelection(p *profile.Profile, sel *ui.LaunchSelection) {
 	p.OpusModel = sel.Opus
 	p.HaikuModel = sel.Haiku
 	p.SubagentModel = sel.Subagent
+	p.FableModel = sel.Fable
 	p.MaxContextTokens = sel.MaxContext
 }
 
@@ -378,6 +383,9 @@ func runAdd() {
 		if result.Profile.PicksModelAtLaunch() {
 			_, err := modelCatalogue(result.Profile, result.APIKey)
 			return err
+		}
+		if result.Profile.AuthMode == profile.AuthOAuth {
+			return provider.CheckOAuth(result.Profile.BaseURL, result.APIKey)
 		}
 		return provider.Ping(result.Profile.BaseURL, result.APIKey, result.Profile.SonnetModel)
 	})

@@ -20,7 +20,11 @@ type Provider struct {
 	// set the setup wizard uses it instead of fetching, and no /models request
 	// is made at all.
 	Models []ModelInfo `json:"models,omitempty"`
-	Auth   AuthConfig  `json:"auth"`
+	// OAuth marks a provider authenticated by a Claude Code setup token
+	// (CLAUDE_CODE_OAUTH_TOKEN) rather than an API key for ANTHROPIC_AUTH_TOKEN.
+	// It changes which env var carries the secret and which requests validate it.
+	OAuth bool       `json:"oauth,omitempty"`
+	Auth  AuthConfig `json:"auth"`
 }
 
 // AuthConfig describes how to authenticate with a provider.
@@ -35,10 +39,13 @@ type AuthConfig struct {
 // The context-window fields are best-effort: gateways that report a window use
 // different spellings, and many report nothing at all. See ContextWindow.
 type ModelInfo struct {
-	ID      string `json:"id"`
-	Object  string `json:"object,omitempty"`
-	OwnedBy string `json:"owned_by,omitempty"`
-	Created int64  `json:"created,omitempty"`
+	ID string `json:"id"`
+	// DisplayName is the human label some gateways send beside the id
+	// (CLIProxyAPI returns it on its Anthropic-shaped listing).
+	DisplayName string `json:"display_name,omitempty"`
+	Object      string `json:"object,omitempty"`
+	OwnedBy     string `json:"owned_by,omitempty"`
+	Created     int64  `json:"created,omitempty"`
 
 	// ContextLength is the OpenAI-compatible spelling (OpenRouter and the
 	// gateways built on it).

@@ -73,6 +73,18 @@
     "modelsUrl": "https://api.kimi.ai/coding/v1/models"
   },
   {
+    "id": "claude",
+    "displayName": "Claude (subscription, setup token)",
+    "baseUrl": "https://api.anthropic.com",
+    "oauth": true,
+    "auth": {
+      "needsKey": true,
+      "keyUrl": "https://code.claude.com/docs/en/authentication#generate-a-long-lived-token",
+      "envVar": "CLAUDE_CODE_OAUTH_TOKEN"
+    },
+    "modelsUrl": "https://api.anthropic.com"
+  },
+  {
     "id": "custom",
     "displayName": "Custom provider",
     "baseUrl": "",

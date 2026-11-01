@@ -276,7 +276,7 @@ func TestBuildEnvConfigDirIsolated(t *testing.T) {
 
 func TestBuildArgsMinimalMode(t *testing.T) {
 	p := &profile.Profile{MinimalMode: true}
-	args := buildArgs(p, []string{"-p", "hello"})
+	args := buildArgs(p, []string{"-p", "hello"}, "")
 
 	if args[0] != "--bare" {
 		t.Errorf("first arg = %q, want --bare", args[0])
@@ -288,10 +288,19 @@ func TestBuildArgsMinimalMode(t *testing.T) {
 
 func TestBuildArgsNoMinimal(t *testing.T) {
 	p := &profile.Profile{MinimalMode: false}
-	args := buildArgs(p, []string{"-p", "hello"})
+	args := buildArgs(p, []string{"-p", "hello"}, "")
 
 	if len(args) != 2 {
 		t.Errorf("args count = %d, want 2 (no --bare)", len(args))
+	}
+}
+
+func TestBuildArgsSettings(t *testing.T) {
+	p := &profile.Profile{}
+	args := buildArgs(p, []string{"-p"}, "/tmp/picker.json")
+
+	if len(args) != 3 || args[0] != "--settings" || args[1] != "/tmp/picker.json" {
+		t.Errorf("args = %v, want --settings /tmp/picker.json before claude's own", args)
 	}
 }
 

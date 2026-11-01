@@ -21,6 +21,7 @@ func TestApplyLaunchSelectionBindsEveryTier(t *testing.T) {
 		Sonnet:     "deepseek-flash",
 		Haiku:      "deepseek-flash",
 		Subagent:   "deepseek-v4-pro",
+		Fable:      "gemini-3.8-flash-high",
 		MaxContext: window(1048576),
 	}
 
@@ -30,8 +31,9 @@ func TestApplyLaunchSelectionBindsEveryTier(t *testing.T) {
 		t.Errorf("ModelMode = %q, want empty for the bound launch copy", p.ModelMode)
 	}
 	if p.SonnetModel != "deepseek-flash" || p.OpusModel != "deepseek-v4-pro" ||
-		p.HaikuModel != "deepseek-flash" || p.SubagentModel != "deepseek-v4-pro" {
-		t.Errorf("tiers = %q/%q/%q/%q", p.SonnetModel, p.OpusModel, p.HaikuModel, p.SubagentModel)
+		p.HaikuModel != "deepseek-flash" || p.SubagentModel != "deepseek-v4-pro" ||
+		p.FableModel != "gemini-3.8-flash-high" {
+		t.Errorf("tiers = %q/%q/%q/%q/%q", p.SonnetModel, p.OpusModel, p.HaikuModel, p.SubagentModel, p.FableModel)
 	}
 	if p.MaxContextTokens == nil || *p.MaxContextTokens != 1048576 {
 		t.Errorf("MaxContextTokens = %v, want 1048576", p.MaxContextTokens)

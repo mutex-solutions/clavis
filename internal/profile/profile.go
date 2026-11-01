@@ -24,11 +24,22 @@ type Profile struct {
 	OpusModel     string `json:"opus_model,omitempty"`
 	HaikuModel    string `json:"haiku_model,omitempty"`
 	SubagentModel string `json:"subagent_model,omitempty"`
+	// FableModel is the sixth tier. Claude Code resolves its `fable` alias
+	// through ANTHROPIC_DEFAULT_FABLE_MODEL, so on a gateway this must be set
+	// like the others — otherwise the picker's Fable row asks the gateway for
+	// a claude-* id it does not serve.
+	FableModel string `json:"fable_model,omitempty"`
 	// ModelMode is empty when the models above are bound to tiers. "pick" means
 	// the profile deliberately binds nothing: every launch asks which model from
 	// the provider to use for that session, and detects its context window then.
 	// Such a profile is interactive by design and cannot be used headlessly.
 	ModelMode string `json:"model_mode,omitempty"`
+
+	// AuthMode is AuthOAuth for a Claude Code setup token, empty for an API
+	// key. The token authenticates a subscription directly against Anthropic;
+	// it is never routed through a gateway, which is why this changes the env
+	// var clavis sets and leaves the base URL alone.
+	AuthMode string `json:"auth_mode,omitempty"`
 
 	// Token Budget
 	//
@@ -70,6 +81,10 @@ type Profile struct {
 	IsolatedConfig bool `json:"isolated_config,omitempty"`
 }
 
+// AuthOAuth is the auth_mode of a profile authenticated by a Claude Code setup
+// token (CLAUDE_CODE_OAUTH_TOKEN).
+const AuthOAuth = "oauth"
+
 // ConfigDir returns the CLAUDE_CONFIG_DIR the profile should launch with, and
 // whether it is isolated. An empty string means "inherit the user's default"
 // (do not set CLAUDE_CONFIG_DIR at all).
@@ -104,11 +119,22 @@ func (p *Profile) ResolvedSubagent() string {
 	return p.SonnetModel
 }
 
+// ResolvedFable returns the fable model or falls back to sonnet.
+func (p *Profile) ResolvedFable() string {
+	if p.FableModel != "" {
+		return p.FableModel
+	}
+	return p.SonnetModel
+}
+
 // ShouldDisableNonessentialTraffic returns the effective value.
 // nil → true for 3P providers, false for anthropic.
 func (p *Profile) ShouldDisableNonessentialTraffic() bool {
 	if p.DisableNonessentialTraffic != nil {
 		return *p.DisableNonessentialTraffic
+	}
+	if p.AuthMode == AuthOAuth {
+		return false // a subscription account is first-party
 	}
 	return p.ProviderID != "anthropic" // default true for 3P
 }
@@ -118,6 +144,9 @@ func (p *Profile) ShouldDisableExperimentalBetas() bool {
 	if p.DisableExperimentalBetas != nil {
 		return *p.DisableExperimentalBetas
 	}
+	if p.AuthMode == AuthOAuth {
+		return false
+	}
 	return p.ProviderID != "anthropic"
 }
 
@@ -125,6 +154,9 @@ func (p *Profile) ShouldDisableExperimentalBetas() bool {
 func (p *Profile) ShouldDisableAttribution() bool {
 	if p.DisableAttribution != nil {
 		return *p.DisableAttribution
+	}
+	if p.AuthMode == AuthOAuth {
+		return false
 	}
 	return p.ProviderID != "anthropic"
 }
@@ -137,13 +169,19 @@ func (p *Profile) Validate() error {
 	if p.ProviderID == "" {
 		return fmt.Errorf("provider_id is required")
 	}
+	if p.AuthMode != "" && p.AuthMode != AuthOAuth {
+		return fmt.Errorf("unknown auth_mode %q (only %q is supported)", p.AuthMode, AuthOAuth)
+	}
 	switch p.ModelMode {
 	case "":
-		if p.SonnetModel == "" {
+		// A setup-token profile may bind nothing: Claude's own model is a
+		// valid answer, and pinning one is the exception.
+		if p.SonnetModel == "" && p.AuthMode != AuthOAuth {
 			return fmt.Errorf("sonnet_model is required")
 		}
 	case "pick":
-		if p.SonnetModel != "" || p.OpusModel != "" || p.HaikuModel != "" || p.SubagentModel != "" {
+		if p.SonnetModel != "" || p.OpusModel != "" || p.HaikuModel != "" ||
+			p.SubagentModel != "" || p.FableModel != "" {
 			return fmt.Errorf("model_mode pick cannot be combined with bound models")
 		}
 	default:

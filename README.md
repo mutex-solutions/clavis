@@ -40,9 +40,17 @@ memory, settings) intact while routing to whichever provider you choose.
 
 ## Features
 
-- **5-tier model mapping**: map provider models to Claude Code's
-  opus / sonnet / haiku / subagent tiers plus the primary `ANTHROPIC_MODEL`
+- **6-tier model mapping**: map provider models to Claude Code's
+  opus / sonnet / haiku / subagent / fable tiers plus the primary `ANTHROPIC_MODEL`
+- **The provider's models in `/model`**: at launch clavis hands Claude Code a
+  settings file listing the provider's catalogue, so `/model` offers every model
+  the endpoint serves. Claude Code's own gateway discovery filters to ids
+  containing `claude`, which no third-party gateway has. The file is passed with
+  `--settings`, so your `~/.claude` is never edited
 - **Secure key storage**: keys in `.env` files (chmod 0600), never in metadata
+- **Direct Claude via setup token**: `clavis add --setup-token` runs the official
+  flow, captures the token, and stores it. It is used directly against Anthropic,
+  and one profile per account keeps multiple subscriptions separate
 - **Shares your `~/.claude` by default**: keep your MCP servers, agents, and
   memory; opt into an isolated config per-profile or per-launch
 - **Live model discovery**: fetches the provider's real model list during setup,
@@ -305,9 +313,41 @@ Claude Code routes different tasks to different model tiers:
 | Opus | `ANTHROPIC_DEFAULT_OPUS_MODEL` | Hard reasoning, architecture |
 | Haiku | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Fast background tasks |
 | Subagent | `CLAUDE_CODE_SUBAGENT_MODEL` | Background agents |
+| Fable | `ANTHROPIC_DEFAULT_FABLE_MODEL` | Hardest, longest-running tasks |
 
 Optional tiers fall back to sonnet if not set. The primary `ANTHROPIC_MODEL` is
 set to the sonnet model.
+
+## Direct Claude (setup token)
+
+`claude setup-token` mints a long-lived (1-year) token for a Claude
+subscription. Stored under the `claude` provider, clavis launches with
+`CLAUDE_CODE_OAUTH_TOKEN` only — no `ANTHROPIC_BASE_URL`, no
+`ANTHROPIC_AUTH_TOKEN` — and strips the inherited ones, so a shell that already
+points at a gateway cannot capture the session.
+
+One command does the whole thing:
+
+```sh
+clavis add --provider claude --setup-token --alias personal
+```
+
+Clavis runs `claude setup-token` on a pty (the official browser flow, untouched),
+widens the terminal so the 108-character token cannot wrap, and captures it from
+the output. If the capture ever misses, the profile is not written with a bad
+token: run `claude setup-token` yourself and pass the result with `--key-stdin`.
+Windows has no automatic capture — same manual fallback.
+
+Validation uses the model listing rather than an inference call: a messages ping
+spends subscription quota, and a busy account answers 429 to a perfectly good
+token. Leave `--model` off and Claude's own default applies.
+
+Multi-account is one profile per account, each with its own token. Sessions run
+side by side because the credential is per-process. Quota is per account, so two
+profiles on the same account share the same limits.
+
+Never point one of these profiles at a gateway: replaying a subscription's OAuth
+through a proxy is the pattern Anthropic bans.
 
 ## Development
 

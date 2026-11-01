@@ -49,11 +49,15 @@ func TestTierFallback(t *testing.T) {
 	if got := p.ResolvedSubagent(); got != "model-sonnet" {
 		t.Errorf("ResolvedSubagent() = %q, want %q", got, "model-sonnet")
 	}
+	if got := p.ResolvedFable(); got != "model-sonnet" {
+		t.Errorf("ResolvedFable() = %q, want %q", got, "model-sonnet")
+	}
 
 	// With explicit values
 	p.OpusModel = "model-opus"
 	p.HaikuModel = "model-haiku"
 	p.SubagentModel = "model-sub"
+	p.FableModel = "model-fable"
 
 	if got := p.ResolvedOpus(); got != "model-opus" {
 		t.Errorf("ResolvedOpus() = %q, want %q", got, "model-opus")
@@ -63,6 +67,36 @@ func TestTierFallback(t *testing.T) {
 	}
 	if got := p.ResolvedSubagent(); got != "model-sub" {
 		t.Errorf("ResolvedSubagent() = %q, want %q", got, "model-sub")
+	}
+	if got := p.ResolvedFable(); got != "model-fable" {
+		t.Errorf("ResolvedFable() = %q, want %q", got, "model-fable")
+	}
+}
+
+func TestValidateOAuthWithoutModel(t *testing.T) {
+	// Claude's own default model is a valid answer for a setup-token profile.
+	p := &Profile{Name: "acct", ProviderID: "claude", BaseURL: "https://api.anthropic.com", AuthMode: AuthOAuth}
+	if err := p.Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil", err)
+	}
+
+	p.AuthMode = "bogus"
+	if err := p.Validate(); err == nil {
+		t.Error("Validate() accepted an unknown auth_mode")
+	}
+}
+
+func TestOAuthHygieneDefaultsFirstParty(t *testing.T) {
+	// A subscription is first-party: none of the 3P hygiene switches apply.
+	p := &Profile{ProviderID: "claude", AuthMode: AuthOAuth}
+	if p.ShouldDisableNonessentialTraffic() {
+		t.Error("setup-token profile should not disable nonessential traffic")
+	}
+	if p.ShouldDisableExperimentalBetas() {
+		t.Error("setup-token profile should not disable experimental betas")
+	}
+	if p.ShouldDisableAttribution() {
+		t.Error("setup-token profile should not disable attribution")
 	}
 }
 
