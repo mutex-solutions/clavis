@@ -1,0 +1,19 @@
+{
+  "name": "mutex-solutions",
+  "description": "Claude Code plugins from mutex-solutions",
+  "owner": {
+    "name": "mutex-solutions",
+    "url": "https://github.com/mutex-solutions"
+  },
+  "plugins": [
+    {
+      "name": "clavis",
+      "source": "./",
+      "description": "Provider routing for Claude Code: profiles, the gateway model picker, and direct Claude via setup token",
+      "version": "0.10.0",
+      "author": {
+        "name": "mutex-solutions"
+      }
+    }
+  ]
+}

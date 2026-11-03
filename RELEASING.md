@@ -28,6 +28,17 @@ tag reports `dev`. Verify after tagging:
 clavis version   # should print the tag, e.g. "clavis 0.2.0"
 ```
 
+## Claude Code plugin
+
+The repo is also a plugin marketplace (`.claude-plugin/marketplace.json`) that
+sells the `clavis` skill. Its version is declared twice — `version` in
+`.claude-plugin/plugin.json` and in the marketplace entry — and neither is read
+from the git tag, so bump both in the release commit. Validate before pushing:
+
+```bash
+claude plugin validate .
+```
+
 ## Homebrew (`brew install mutex-solutions/tap/clavis`)
 
 The tap repo **`mutex-solutions/homebrew-tap`** already exists and carries a

@@ -1,0 +1,20 @@
+{
+  "name": "clavis",
+  "displayName": "clavis",
+  "version": "0.10.0",
+  "description": "Provider routing for Claude Code: profiles, the gateway model picker, and direct Claude via setup token",
+  "author": {
+    "name": "mutex-solutions",
+    "url": "https://github.com/mutex-solutions"
+  },
+  "homepage": "https://github.com/mutex-solutions/clavis",
+  "repository": "https://github.com/mutex-solutions/clavis",
+  "license": "Apache-2.0",
+  "keywords": [
+    "claude-code",
+    "provider",
+    "gateway",
+    "models",
+    "subagents"
+  ]
+}

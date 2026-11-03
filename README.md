@@ -122,6 +122,27 @@ clavis update --check    # just report whether one is available
 `clavis update` also refreshes any shell completions you've installed, so new
 commands tab-complete after upgrading.
 
+### Claude Code skill
+
+The repository doubles as a Claude Code plugin marketplace, so the `clavis`
+skill installs like any other plugin — no clone or symlink. One step (Claude
+Code 2.1.275+):
+
+```text
+/plugin install clavis --marketplace mutex-solutions/clavis
+```
+
+Or in two:
+
+```text
+/plugin marketplace add mutex-solutions/clavis
+/plugin install clavis@mutex-solutions
+```
+
+The skill runs as `/clavis:clavis` and also loads on its own when a task
+involves clavis profiles, gateway models, or subagent routing. The plugin
+carries no binary: install the CLI separately, as above.
+
 ### Shell completion
 
 ```bash
