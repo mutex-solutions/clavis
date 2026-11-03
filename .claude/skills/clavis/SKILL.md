@@ -110,6 +110,11 @@ Frontmatter beats `CLAUDE_CODE_SUBAGENT_MODEL` (since v2.1.251); setting
 model. The Agent tool's own `model` parameter accepts only aliases
 (`sonnet|opus|haiku|fable`), so per-agent ids must come from a definition file.
 
+Agent files live in `~/.claude/agents/<name>.md` (or a project's
+`.claude/agents/`). They are read at session start: create or edit one, then
+relaunch. For one model across every anonymous subagent, skip the file — the
+pick-mode launch asks for a Subagent tier, which is exactly that.
+
 **Different endpoint — impossible in one process.** `ANTHROPIC_BASE_URL` is
 process-wide and there is no per-agent env, base URL, or credential field.
 Unknown frontmatter keys are ignored silently, so an `env:` block does nothing.
@@ -120,8 +125,29 @@ clavis <profile> -- -p "task"        # child process on the gateway
 ```
 
 That child shares `~/.claude` (MCP servers, agents, memory) but has its own
-context; only stdout comes back. For a native-Claude parent with a gateway
-child, strip the inherited clavis environment first:
+context; only stdout comes back.
+
+**Main on a setup-token profile, subagents on the gateway.** This is the common
+mixed case and it is two processes, by construction:
+
+```sh
+clavis work                                  # main: real Claude, setup token
+# inside that session, the model runs:
+clavis deepseek -- -p "review this diff"     # child: gateway model
+```
+
+The child profile can be a gateway profile in pick mode, but a pick profile asks
+for a model interactively — for an agent that has no terminal, bind one first
+(`clavis edit <name>`) or create a dedicated profile per model. `clavis env`
+refuses pick-mode profiles for the same reason.
+
+An agent definition cannot carry an endpoint, so this is a Bash/tool call the
+model makes, not an Agent-tool subagent. If the work suits the Agent tool's
+shared scaffolding (tool permissions, MCP, parallel fan-out), run the whole
+session on the gateway instead and use `model:` per agent.
+
+For a native-Claude parent with a gateway child, strip the inherited clavis
+environment first:
 
 ```sh
 env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL \
